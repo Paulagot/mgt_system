@@ -1,6 +1,6 @@
 // client/src/services/apiService.ts
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://your-production-api.com/api' 
+  ? 'https://mgtsystem-production.up.railway.app/api' 
   : 'http://localhost:3001/api';
 
 class ApiService {
