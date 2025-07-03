@@ -24,7 +24,10 @@
     "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
     "server:dev": "cd server && npm run dev",
     "client:dev": "cd client && npm start",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+     "install": "npm install --prefix client && npm install --prefix server",
+  "build": "npm run build --prefix client",
+  "start": "npm run build && npm start --prefix server"
   },
   "eslintConfig": {
     "extends": [

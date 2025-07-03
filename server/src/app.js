@@ -67,6 +67,28 @@ app.use((error, req, res, next) => {
   });
 });
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Required for __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve frontend static files in production
+const clientBuildPath = path.resolve(__dirname, '../../client/build');
+app.use(express.static(clientBuildPath));
+
+// Serve index.html on unknown routes (for React Router)
+app.get('*', (req, res, next) => {
+  // Only serve frontend for GET requests that aren't API routes
+  if (req.method === 'GET' && !req.originalUrl.startsWith('/api')) {
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  } else {
+    next(); // pass to next middleware (e.g., 404)
+  }
+});
+
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
