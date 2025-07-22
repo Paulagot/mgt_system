@@ -3,26 +3,95 @@ import { config } from './environment.js';
 
 class Database {
   constructor() {
-    this.connection = null;
+    this.pool = null;
   }
 
   async connect() {
     try {
-      this.connection = await mysql.createConnection({
+      // Create connection pool with only valid MySQL2 options
+      this.pool = mysql.createPool({
         host: config.DB_HOST,
         user: config.DB_USER,
         password: config.DB_PASSWORD,
         database: config.DB_NAME,
         timezone: '+00:00',
+        
+        // Core pool settings (all valid for MySQL2)
+        connectionLimit: 10,          // Maximum number of connections in pool
+        queueLimit: 0,               // No limit on queued connection requests
+        
+        // Keep connections alive to prevent MySQL timeout
+        keepAliveInitialDelay: 0,     
+        enableKeepAlive: true,        
+        
+        // Character set and security
+        charset: 'utf8mb4',
+        multipleStatements: false,    // Security: prevent SQL injection
+        
+        // SSL settings (set to true if using SSL)
+        ssl: false,
+        
+        // Type casting
+        typeCast: true,               // Automatically cast MySQL types to JS types
       });
       
-      console.log('✅ Connected to MySQL database');
+      // Test the connection
+      const connection = await this.pool.getConnection();
+      console.log('✅ Connected to MySQL database with connection pool');
+      connection.release(); // Return connection to pool
+      
       await this.initializeTables();
+      
+      // Handle pool errors
+      this.pool.on('connection', (connection) => {
+        console.log('🔗 New database connection established');
+      });
+      
+      this.pool.on('error', (err) => {
+        console.error('❌ Database pool error:', err);
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+          console.log('🔄 Database connection lost, pool will reconnect...');
+        } else {
+          throw err;
+        }
+      });
       
     } catch (error) {
       console.error('❌ Database connection failed:', error);
       process.exit(1);
     }
+  }
+
+  // Method to get connection from pool
+  async getConnection() {
+    if (!this.pool) {
+      throw new Error('Database pool not initialized. Call connect() first.');
+    }
+    return await this.pool.getConnection();
+  }
+
+  // Method to execute queries safely
+  async execute(query, params = []) {
+    if (!this.pool) {
+      throw new Error('Database pool not initialized. Call connect() first.');
+    }
+    
+    try {
+      const [results] = await this.pool.execute(query, params);
+      return [results];
+    } catch (error) {
+      console.error('❌ Database query error:', error);
+      console.error('Query:', query);
+      console.error('Params:', params);
+      throw error;
+    }
+  }
+
+  // For backward compatibility - redirect to pool
+  get connection() {
+    return {
+      execute: (query, params) => this.execute(query, params)
+    };
   }
 
   async initializeTables() {
@@ -165,7 +234,7 @@ class Database {
     
     for (let i = 0; i < tables.length; i++) {
       try {
-        await this.connection.execute(tables[i]);
+        await this.execute(tables[i]);
         console.log(`✅ Table ${i + 1}/${tables.length} initialized`);
       } catch (error) {
         console.error(`❌ Error creating table ${i + 1}:`, error);
@@ -175,8 +244,30 @@ class Database {
     
     console.log('🎉 All database tables initialized successfully!');
   }
+
+  // Graceful shutdown
+  async close() {
+    if (this.pool) {
+      await this.pool.end();
+      console.log('✅ Database pool closed');
+    }
+  }
 }
 
 // Create and export singleton instance
 const database = new Database();
+
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Received SIGINT, closing database pool...');
+  await database.close();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('Received SIGTERM, closing database pool...');
+  await database.close();
+  process.exit(0);
+});
+
 export default database;
