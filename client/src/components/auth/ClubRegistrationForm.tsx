@@ -7,6 +7,81 @@ interface ClubRegisterFormProps {
   onSwitchToLogin?: () => void;
 }
 
+// ✅ FIXED: Move InputField outside component to prevent re-creation
+const InputField = React.memo(({ 
+  label, 
+  name, 
+  type = 'text', 
+  icon: Icon, 
+  placeholder,
+  autoComplete,
+  showToggle = false,
+  showPassword: isPasswordVisible = false,
+  onToggleShow,
+  value,
+  onChange,
+  onBlur,
+  error,
+  touched,
+  disabled
+}: {
+  label: string;
+  name: string;
+  type?: string;
+  icon: any;
+  placeholder: string;
+  autoComplete?: string;
+  showToggle?: boolean;
+  showPassword?: boolean;
+  onToggleShow?: () => void;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur: () => void;
+  error?: string;
+  touched?: boolean;
+  disabled?: boolean;
+}) => (
+  <div>
+    <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">
+      {label} *
+    </label>
+    <div className="relative">
+      <Icon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+      <input
+        type={showToggle ? (isPasswordVisible ? 'text' : 'password') : type}
+        id={name}
+        name={name}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        className={`w-full pl-10 ${showToggle ? 'pr-10' : 'pr-3'} py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 ${
+          error && touched
+            ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+            : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+        }`}
+        placeholder={placeholder}
+        disabled={disabled}
+      />
+      {showToggle && onToggleShow && (
+        <button
+          type="button"
+          onClick={onToggleShow}
+          className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+        >
+          {isPasswordVisible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+        </button>
+      )}
+    </div>
+    {error && touched && (
+      <p className="mt-1 text-sm text-red-600 flex items-center">
+        <AlertCircle className="h-4 w-4 mr-1" />
+        {error}
+      </p>
+    )}
+  </div>
+));
+
 export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormProps) {
   const { register } = useAuth();
   const { isLoading, error, clearError } = useUI();
@@ -23,7 +98,7 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  // Simplified input change handler
+  // ✅ FIXED: Simplified input change handler
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -31,84 +106,85 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
       [name]: value
     }));
     
-    // Clear error immediately when user starts typing
-    setErrors(prev => {
-      if (prev[name]) {
+    // Clear field error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors[name];
         return newErrors;
-      }
-      return prev;
-    });
+      });
+    }
     
     if (error) clearError();
-  }, [error, clearError]); // ✅ Removed 'errors' dependency
+  }, [error, clearError, errors]);
 
-  // Fixed validation - removed dependency on errors state to prevent re-render loops
-  const validateField = useCallback((field: string) => {
-    const newErrors = { ...errors };
+  // ✅ FIXED: Stable validation function
+  const validateField = useCallback((field: string, currentFormData: typeof formData) => {
+    const newErrors: Record<string, string> = {};
 
     switch (field) {
       case 'name':
-        if (!formData.name.trim()) {
+        if (!currentFormData.name.trim()) {
           newErrors.name = 'Club name is required';
-        } else if (formData.name.trim().length < 2) {
+        } else if (currentFormData.name.trim().length < 2) {
           newErrors.name = 'Club name must be at least 2 characters';
-        } else {
-          delete newErrors.name;
         }
         break;
 
       case 'email':
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!formData.email) {
+        if (!currentFormData.email) {
           newErrors.email = 'Email is required';
-        } else if (!emailRegex.test(formData.email)) {
+        } else if (!emailRegex.test(currentFormData.email)) {
           newErrors.email = 'Please enter a valid email address';
-        } else {
-          delete newErrors.email;
         }
         break;
 
       case 'password':
-        if (!formData.password) {
+        if (!currentFormData.password) {
           newErrors.password = 'Password is required';
-        } else if (formData.password.length < 8) {
+        } else if (currentFormData.password.length < 8) {
           newErrors.password = 'Password must be at least 8 characters';
-        } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
+        } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(currentFormData.password)) {
           newErrors.password = 'Password must contain uppercase, lowercase, and number';
-        } else {
-          delete newErrors.password;
         }
         break;
 
       case 'confirmPassword':
-        if (!formData.confirmPassword) {
+        if (!currentFormData.confirmPassword) {
           newErrors.confirmPassword = 'Please confirm your password';
-        } else if (formData.password !== formData.confirmPassword) {
+        } else if (currentFormData.password !== currentFormData.confirmPassword) {
           newErrors.confirmPassword = 'Passwords do not match';
-        } else {
-          delete newErrors.confirmPassword;
         }
         break;
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [formData]); // ✅ Removed 'errors' dependency
+    return newErrors;
+  }, []);
 
-  // Simplified blur handler - now validateField is declared above
-  const handleBlur = useCallback((field: string) => {
-    setTouched(prev => ({
-      ...prev,
-      [field]: true
-    }));
-    
-    // Only validate on blur, not during typing
-    setTimeout(() => validateField(field), 0);
-  }, [validateField]);
+  // ✅ FIXED: Create stable blur handlers
+  const createBlurHandler = useCallback((field: string) => {
+    return () => {
+      setTouched(prev => ({
+        ...prev,
+        [field]: true
+      }));
+      
+      const fieldErrors = validateField(field, formData);
+      setErrors(prev => ({
+        ...prev,
+        ...fieldErrors
+      }));
+    };
+  }, [formData, validateField]);
 
-  // Fixed form validation - check if form is complete and valid
+  // ✅ FIXED: Create stable blur handlers for each field
+  const handleNameBlur = createBlurHandler('name');
+  const handleEmailBlur = createBlurHandler('email');
+  const handlePasswordBlur = createBlurHandler('password');
+  const handleConfirmPasswordBlur = createBlurHandler('confirmPassword');
+
+  // ✅ FIXED: Form validation
   const isFormValid = useCallback(() => {
     const hasAllFields = formData.name.trim() && 
                         formData.email.trim() && 
@@ -125,15 +201,15 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
 
   const validateForm = () => {
     const fields = ['name', 'email', 'password', 'confirmPassword'];
-    let isValid = true;
+    const allErrors: Record<string, string> = {};
     
     fields.forEach(field => {
-      if (!validateField(field)) {
-        isValid = false;
-      }
+      const fieldErrors = validateField(field, formData);
+      Object.assign(allErrors, fieldErrors);
     });
 
-    return isValid;
+    setErrors(allErrors);
+    return Object.keys(allErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -149,14 +225,12 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
         email: formData.email.trim(),
         password: formData.password
       });
-      // Registration success is handled by the store (redirect to dashboard)
     } catch (error) {
-      // Error is already set in the store by the register function
       console.error('Registration failed:', error);
     }
   };
 
-  // Memoized password strength calculation
+  // ✅ FIXED: Memoized password strength calculation
   const getPasswordStrength = useCallback(() => {
     const password = formData.password;
     let score = 0;
@@ -177,72 +251,9 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
     return { text: 'Strong', color: 'text-green-600' };
   }, [getPasswordStrength]);
 
-  // Memoized password toggle handlers
+  // ✅ FIXED: Stable toggle handlers
   const togglePassword = useCallback(() => setShowPassword(prev => !prev), []);
   const toggleConfirmPassword = useCallback(() => setShowConfirmPassword(prev => !prev), []);
-
-  // Optimized InputField component to prevent re-renders
-  const InputField = React.memo(({ 
-    label, 
-    name, 
-    type = 'text', 
-    icon: Icon, 
-    placeholder,
-    autoComplete,
-    showToggle = false,
-    showPassword: isPasswordVisible = false,
-    onToggleShow
-  }: {
-    label: string;
-    name: string;
-    type?: string;
-    icon: any;
-    placeholder: string;
-    autoComplete?: string;
-    showToggle?: boolean;
-    showPassword?: boolean;
-    onToggleShow?: () => void;
-  }) => (
-    <div>
-      <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">
-        {label} *
-      </label>
-      <div className="relative">
-        <Icon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-        <input
-          type={showToggle ? (isPasswordVisible ? 'text' : 'password') : type}
-          id={name}
-          name={name}
-          autoComplete={autoComplete}
-          value={formData[name as keyof typeof formData]}
-          onChange={handleInputChange}
-          onBlur={() => handleBlur(name)}
-          className={`w-full pl-10 ${showToggle ? 'pr-10' : 'pr-3'} py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 ${
-            errors[name] && touched[name]
-              ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-              : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-          }`}
-          placeholder={placeholder}
-          disabled={isLoading}
-        />
-        {showToggle && onToggleShow && (
-          <button
-            type="button"
-            onClick={onToggleShow}
-            className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-          >
-            {isPasswordVisible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-          </button>
-        )}
-      </div>
-      {errors[name] && touched[name] && (
-        <p className="mt-1 text-sm text-red-600 flex items-center">
-          <AlertCircle className="h-4 w-4 mr-1" />
-          {errors[name]}
-        </p>
-      )}
-    </div>
-  ));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center p-4">
@@ -273,7 +284,6 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
             </div>
           )}
 
-          {/* ✅ FIXED: Proper form element with onSubmit */}
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <InputField
               label="Club Name"
@@ -281,6 +291,12 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
               icon={Users}
               placeholder="e.g., Greenfield Community Club"
               autoComplete="organization"
+              value={formData.name}
+              onChange={handleInputChange}
+              onBlur={handleNameBlur}
+              error={errors.name}
+              touched={touched.name}
+              disabled={isLoading}
             />
 
             <InputField
@@ -290,6 +306,12 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
               icon={Mail}
               placeholder="club@example.com"
               autoComplete="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              onBlur={handleEmailBlur}
+              error={errors.email}
+              touched={touched.email}
+              disabled={isLoading}
             />
 
             <div>
@@ -302,6 +324,12 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
                 showToggle={true}
                 showPassword={showPassword}
                 onToggleShow={togglePassword}
+                value={formData.password}
+                onChange={handleInputChange}
+                onBlur={handlePasswordBlur}
+                error={errors.password}
+                touched={touched.password}
+                disabled={isLoading}
               />
               
               {/* Password Strength Indicator */}
@@ -335,9 +363,14 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
               showToggle={true}
               showPassword={showConfirmPassword}
               onToggleShow={toggleConfirmPassword}
+              value={formData.confirmPassword}
+              onChange={handleInputChange}
+              onBlur={handleConfirmPasswordBlur}
+              error={errors.confirmPassword}
+              touched={touched.confirmPassword}
+              disabled={isLoading}
             />
 
-            {/* ✅ FIXED: Better button disabled logic */}
             <button
               type="submit"
               disabled={isLoading || !isFormValid()}
