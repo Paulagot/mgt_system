@@ -1,3 +1,5 @@
+// client/src/components/events/EventsTab.tsx (UPDATED)
+
 import React from 'react';
 import { Plus, Calendar } from 'lucide-react';
 import EventCard from '../cards/EventCard';
@@ -10,6 +12,8 @@ interface EventsTabProps {
   onEditEvent: (event: Event) => void;
   onDeleteEvent: (eventId: string) => void;
   onViewEvent: (event: Event) => void;
+  // NEW: Add function to get prize data
+  getPrizeDataForEvent?: (eventId: string) => { count: number; value: number };
 }
 
 const EventsTab: React.FC<EventsTabProps> = ({
@@ -19,6 +23,7 @@ const EventsTab: React.FC<EventsTabProps> = ({
   onEditEvent,
   onDeleteEvent,
   onViewEvent,
+  getPrizeDataForEvent, // NEW
 }) => {
   return (
     <div className="space-y-6">
@@ -35,16 +40,24 @@ const EventsTab: React.FC<EventsTabProps> = ({
 
       {events.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {events.map((event) => (
-            <EventCard
-              key={event.id}
-              event={event}
-              onEdit={onEditEvent}
-              onDelete={onDeleteEvent}
-              onView={onViewEvent}
-              campaignName={getCampaignName(event.campaign_id)}
-            />
-          ))}
+          {events.map((event) => {
+            // NEW: Get prize data for this event
+            const prizeData = getPrizeDataForEvent ? getPrizeDataForEvent(event.id) : { count: 0, value: 0 };
+            
+            return (
+              <EventCard
+                key={event.id}
+                event={event}
+                onEdit={onEditEvent}
+                onDelete={onDeleteEvent}
+                onView={onViewEvent}
+                campaignName={getCampaignName(event.campaign_id)}
+                // NEW: Pass prize data to EventCard
+                prizeCount={prizeData.count}
+                prizeValue={prizeData.value}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12">

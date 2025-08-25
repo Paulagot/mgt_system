@@ -18,12 +18,14 @@ interface ApiUser {
   name: string;
   email: string;
   role: string;
+  created_at?: string; // FIX: Added optional created_at field
 }
 
 interface ApiClub {
   id: string;
   name: string;
   email: string;
+  created_at?: string; // FIX: Added optional created_at field
 }
 
 interface AuthResponse {
@@ -79,13 +81,14 @@ function convertApiUser(apiUser: ApiUser): User {
   return {
     ...apiUser,
     role: apiUser.role as User['role'],
+    created_at: apiUser.created_at || new Date().toISOString(), // FIX: Provide string date or current ISO string
   };
 }
 
 function convertApiClub(apiClub: ApiClub): Club {
   return {
     ...apiClub,
-    created_at: new Date(),
+    created_at: apiClub.created_at || new Date().toISOString(), // FIX: Provide string date or current ISO string
   };
 }
 

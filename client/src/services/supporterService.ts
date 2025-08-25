@@ -99,12 +99,19 @@ class SupporterService extends BaseService {
    * Get all supporters for a club with advanced filtering
    */
   async getSupporters(clubId: string, filters?: SupporterFilters) {
-    const params = filters ? `?${new URLSearchParams(filters as any).toString()}` : '';
+    const params = filters ? `?${this.buildQueryString(filters)}` : '';
     return this.request<{ 
       supporters: any[]; 
       total: number; 
       filters_applied: SupporterFilters;
     }>(`/clubs/${clubId}/supporters${params}`);
+  }
+
+  /**
+   * Get supporters by club - alias for getSupporters for backward compatibility
+   */
+  async getSupportersByClub(clubId: string, filters?: SupporterFilters) {
+    return this.getSupporters(clubId, filters);
   }
 
   /**
@@ -215,19 +222,14 @@ class SupporterService extends BaseService {
    * Search supporters with advanced filters
    */
   async searchSupporters(clubId: string, query: string, filters?: Omit<SupporterFilters, 'search'>) {
-    const params = new URLSearchParams({ q: query });
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined) params.append(key, value.toString());
-      });
-    }
+    const params = this.buildQueryString({ q: query, ...filters });
     
     return this.request<{ 
       search_results: any[]; 
       query: string; 
       filters: any; 
       total_results: number;
-    }>(`/clubs/${clubId}/supporters/search?${params.toString()}`);
+    }>(`/clubs/${clubId}/supporters/search?${params}`);
   }
 
   // ===== SPECIALIZED SUPPORTER QUERIES =====
@@ -293,7 +295,7 @@ class SupporterService extends BaseService {
    * Export supporters with filtering options
    */
   async exportSupporters(clubId: string, filters?: SupporterFilters & { format?: 'csv' }) {
-    const params = filters ? `?${new URLSearchParams(filters as any).toString()}` : '';
+    const params = filters ? `?${this.buildQueryString(filters)}` : '';
     return this.request<{ 
       export_data: any[]; 
       filename: string; 
@@ -333,11 +335,11 @@ class SupporterService extends BaseService {
       errors.push('Supporter type is required');
     }
 
-    if (data.email && !/\S+@\S+\.\S+/.test(data.email)) {
+    if (data.email && !this.isValidEmail(data.email)) {
       errors.push('Invalid email format');
     }
 
-    if (data.phone && !/^[\+]?[0-9\s\-\(\)]{10,}$/.test(data.phone)) {
+    if (data.phone && !this.isValidPhone(data.phone)) {
       errors.push('Invalid phone number format');
     }
 
@@ -407,4 +409,6 @@ class SupporterService extends BaseService {
   }
 }
 
-export default new SupporterService();
+// Export instance, not class
+const supporterService = new SupporterService();
+export default supporterService;

@@ -1,4 +1,4 @@
-// client/src/App.tsx
+// client/src/App.tsx - Fixed TypeScript issues
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import ClubRegistrationForm from './components/auth/ClubRegistrationForm';
@@ -8,15 +8,30 @@ import CreateCampaignForm from './components/campaigns/CreateCampaignForm';
 import EventExpenseManager from './components/events/EventExpenseManager';
 import AuthPage from './components/auth/AuthPage';
 import AuthGuard from './components/auth/AuthGuard';
+
+// NEW Sprint Components - NOW ENABLED
+import UserManagement from './components/users/UserManagement';
+import PrizeManagement from './components/prizes/PrizeManagement';
+import TaskManagement from './components/users/TaskManagement';
+
 import { useAuth, useUI } from './store/app_store';
 import { apiService } from './services/apiService';
+import type { UserRole, Expense } from './types/types'; // Import types properly
+
+// Define nav item interface
+interface NavItem {
+  path: string;
+  label: string;
+  exact?: boolean;
+  roles?: UserRole[];
+}
 
 // Simple navigation component
 const Navigation = () => {
   const location = useLocation();
   const { isAuthenticated, logout, user, club } = useAuth();
   
-  const navItems = [
+  const navItems: NavItem[] = [
     { path: '/', label: '🏠 Home', exact: true },
     { path: '/auth', label: '🔐 Login/Register' },
     ...(isAuthenticated ? [
@@ -24,8 +39,19 @@ const Navigation = () => {
       { path: '/create-event', label: '📅 Create Event' },
       { path: '/create-campaign', label: '🎯 Create Campaign' },
       { path: '/expense-manager', label: '💰 Expense Manager' },
+      // NEW Sprint Features - NOW ENABLED
+      { path: '/users', label: '👥 Team Management', roles: ['host', 'admin'] as UserRole[] },
+      { path: '/prizes', label: '🏆 Prize Management' },
+      { path: '/tasks', label: '📋 Task Management' },
     ] : [])
   ];
+
+  // Helper function to check if user can see a nav item
+  const canSeeNavItem = (item: NavItem): boolean => {
+    if (!item.roles) return true; // No role restriction
+    if (!user?.role) return false; // No user role
+    return item.roles.includes(user.role);
+  };
 
   return (
     <nav style={{
@@ -43,7 +69,7 @@ const Navigation = () => {
         alignItems: 'center'
       }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          {navItems.map(item => (
+          {navItems.filter(canSeeNavItem).map(item => (
             <Link
               key={item.path}
               to={item.path}
@@ -69,7 +95,7 @@ const Navigation = () => {
               fontSize: '0.875rem',
               opacity: 0.9 
             }}>
-              👋 {club.name}
+              👋 {club.name} ({user?.role})
             </span>
           )}
           
@@ -98,7 +124,7 @@ const Navigation = () => {
 
 // Home page showing available components
 const HomePage = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   
   return (
     <div style={{
@@ -190,6 +216,45 @@ const HomePage = () => {
                   Track expenses with categories and totals
                 </p>
               </div>
+
+              {/* NEW Sprint Features - NOW VISIBLE */}
+              {user?.role && (['host', 'admin'] as UserRole[]).includes(user.role) && (
+                <div style={{
+                  backgroundColor: '#ecfdf5',
+                  border: '1px solid #10b981',
+                  padding: '1rem',
+                  borderRadius: '4px'
+                }}>
+                  <h3 style={{ color: '#047857', margin: '0 0 0.5rem 0' }}>👥 Team Management</h3>
+                  <p style={{ color: '#374151', fontSize: '0.875rem', margin: 0 }}>
+                    ✨ Manage club members and roles (Now Available!)
+                  </p>
+                </div>
+              )}
+
+              <div style={{
+                backgroundColor: '#fef7cd',
+                border: '1px solid #d97706',
+                padding: '1rem',
+                borderRadius: '4px'
+              }}>
+                <h3 style={{ color: '#92400e', margin: '0 0 0.5rem 0' }}>🏆 Prize Management</h3>
+                <p style={{ color: '#374151', fontSize: '0.875rem', margin: 0 }}>
+                  ✨ Manage event prizes and donor tracking (Now Available!)
+                </p>
+              </div>
+
+              <div style={{
+                backgroundColor: '#f0f9ff',
+                border: '1px solid #0ea5e9',
+                padding: '1rem',
+                borderRadius: '4px'
+              }}>
+                <h3 style={{ color: '#0c4a6e', margin: '0 0 0.5rem 0' }}>📋 Task Management</h3>
+                <p style={{ color: '#374151', fontSize: '0.875rem', margin: 0 }}>
+                  ✨ Assign and track tasks for events (Now Available!)
+                </p>
+              </div>
             </div>
           ) : (
             <div style={{
@@ -226,7 +291,8 @@ const HomePage = () => {
           textAlign: 'center'
         }}>
           <strong>Status:</strong> ✅ Frontend Working | ✅ Backend Running (Port 3001) | 
-          ✅ API Integration Complete | {isAuthenticated ? ' 🎉 Authenticated & Ready!' : ' 🔧 Ready for Authentication'}
+          ✅ API Integration Complete | ✨ NEW Sprint Features Now Available! | 
+          {isAuthenticated ? ' 🎉 Authenticated & Ready!' : ' 🔧 Ready for Authentication'}
         </div>
       </div>
     </div>
@@ -234,7 +300,6 @@ const HomePage = () => {
 };
 
 // Real API handlers - replacing mock handlers
-
 const apiHandlers = {
   handleEventCreation: async (data: any) => {
     try {
@@ -250,12 +315,11 @@ const apiHandlers = {
       const response = await apiService.createEvent(eventData);
       console.log('✅ Event created successfully:', response);
       
-      // REMOVED: alert('Event created successfully!');
       return response;
     } catch (error) {
       console.error('❌ Failed to create event:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create event';
-      alert(`Error creating event: ${errorMessage}`); // Keep error alerts
+      alert(`Error creating event: ${errorMessage}`);
       throw error;
     }
   },
@@ -267,19 +331,18 @@ const apiHandlers = {
       const response = await apiService.createCampaign(data);
       console.log('✅ Campaign created successfully:', response);
       
-      // REMOVED: alert('Campaign created successfully!');
       return response;
     } catch (error) {
       console.error('❌ Failed to create campaign:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create campaign';
-      alert(`Error creating campaign: ${errorMessage}`); // Keep error alerts
+      alert(`Error creating campaign: ${errorMessage}`);
       throw error;
     }
   }
 };
 
-// Mock data for EventExpenseManager - matching Expense interface exactly
-const mockExpenses = [
+// Mock data for EventExpenseManager with proper typing
+const mockExpenses: Expense[] = [
   {
     id: '1',
     club_id: 'demo-club-1',
@@ -287,12 +350,12 @@ const mockExpenses = [
     category: 'Venue',
     description: 'Hall rental',
     amount: 250,
-    date: new Date('2024-06-15'),
+    date: '2024-06-15',
     vendor: 'City Hall',
-    payment_method: 'card' as const,
-    status: 'approved' as const,
+    payment_method: 'card',
+    status: 'approved',
     created_by: 'demo-user-1',
-    created_at: new Date('2024-06-15T10:00:00Z')
+    created_at: '2024-06-15T10:00:00Z'
   },
   {
     id: '2',
@@ -301,12 +364,12 @@ const mockExpenses = [
     category: 'Food',
     description: 'Catering service',
     amount: 450,
-    date: new Date('2024-06-15'),
+    date: '2024-06-15',
     vendor: 'Local Catering Co.',
-    payment_method: 'transfer' as const,
-    status: 'pending' as const,
+    payment_method: 'transfer',
+    status: 'pending',
     created_by: 'demo-user-1',
-    created_at: new Date('2024-06-15T11:00:00Z')
+    created_at: '2024-06-15T11:00:00Z'
   }
 ];
 
@@ -326,7 +389,7 @@ const mockExpenseHandlers = {
 };
 
 function App() {
-  const { isAuthenticated, initialize } = useAuth();
+  const { user, club, isAuthenticated, initialize } = useAuth();
 
   // Initialize auth state on app load
   useEffect(() => {
@@ -406,42 +469,41 @@ function App() {
             } 
           />
           
-          // In App.tsx, update the create-campaign route styling
-<Route 
-  path="/create-campaign" 
-  element={
-    <AuthGuard>
-      <div style={{ 
-        padding: '2rem', 
-        maxWidth: '800px', 
-        margin: '0 auto',
-        backgroundColor: '#f9fafb',
-        minHeight: '100vh'
-      }}>
-        <div style={{
-          backgroundColor: 'white',
-          padding: '2rem',
-          borderRadius: '8px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-        }}>
-          <h2 style={{ 
-            fontSize: '2rem', 
-            fontWeight: 'bold', 
-            marginBottom: '2rem',
-            color: '#16a34a', // CHANGED: Green color for campaigns
-            textAlign: 'center'
-          }}>
-            Create New Campaign
-          </h2>
-          <CreateCampaignForm 
-            onSubmit={apiHandlers.handleCampaignCreation}
-            onCancel={() => window.history.back()}
+          <Route 
+            path="/create-campaign" 
+            element={
+              <AuthGuard>
+                <div style={{ 
+                  padding: '2rem', 
+                  maxWidth: '800px', 
+                  margin: '0 auto',
+                  backgroundColor: '#f9fafb',
+                  minHeight: '100vh'
+                }}>
+                  <div style={{
+                    backgroundColor: 'white',
+                    padding: '2rem',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                  }}>
+                    <h2 style={{ 
+                      fontSize: '2rem', 
+                      fontWeight: 'bold', 
+                      marginBottom: '2rem',
+                      color: '#16a34a',
+                      textAlign: 'center'
+                    }}>
+                      Create New Campaign
+                    </h2>
+                    <CreateCampaignForm 
+                      onSubmit={apiHandlers.handleCampaignCreation}
+                      onCancel={() => window.history.back()}
+                    />
+                  </div>
+                </div>
+              </AuthGuard>
+            } 
           />
-        </div>
-      </div>
-    </AuthGuard>
-  } 
-/>
           
           <Route 
             path="/expense-manager" 
@@ -474,6 +536,52 @@ function App() {
                       onDeleteExpense={mockExpenseHandlers.handleDeleteExpense}
                     />
                   </div>
+                </div>
+              </AuthGuard>
+            } 
+          />
+
+          {/* NEW Sprint Routes - NOW ENABLED */}
+          <Route 
+            path="/users" 
+            element={
+              <AuthGuard>
+                <div style={{ 
+                  padding: '2rem',
+                  backgroundColor: '#f9fafb',
+                  minHeight: '100vh'
+                }}>
+                   <UserManagement clubId={user?.club_id || ''} />
+                </div>
+              </AuthGuard>
+            } 
+          />
+
+          <Route 
+            path="/prizes" 
+            element={
+              <AuthGuard>
+                <div style={{ 
+                  padding: '2rem',
+                  backgroundColor: '#f9fafb',
+                  minHeight: '100vh'
+                }}>
+                  <PrizeManagement />
+                </div>
+              </AuthGuard>
+            } 
+          />
+
+          <Route 
+            path="/tasks" 
+            element={
+              <AuthGuard>
+                <div style={{ 
+                  padding: '2rem',
+                  backgroundColor: '#f9fafb',
+                  minHeight: '100vh'
+                }}>
+                  <TaskManagement />
                 </div>
               </AuthGuard>
             } 

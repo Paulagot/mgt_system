@@ -1,11 +1,14 @@
+// server/src/app.js
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import config from './config/environment.js';
 import database from './config/database.js';
 import socketManager from './config/socket.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Import routes
+// Import existing routes
 import authRoutes from './routes/auth.js';
 import campaignRoutes from './routes/campaigns.js'
 import eventRoutes from './routes/events.js';
@@ -14,8 +17,17 @@ import incomeRoutes from './routes/income.js';
 import financialRoutes from './routes/financials.js';
 import supporterRoutes from './routes/supporters.js';
 
+// Import NEW routes for sprint features
+import userRoutes from './routes/users.js';
+import prizeRoutes from './routes/prizes.js';
+import taskRoutes from './routes/tasks.js';
+
 const app = express();
 const httpServer = createServer(app);
+
+// Required for __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Initialize Socket.IO through our manager
 socketManager.initialize(httpServer);
@@ -27,7 +39,7 @@ app.set('socketManager', socketManager);
 app.use(cors());
 app.use(express.json());
 
-// API Routes
+// API Routes - Existing (keep original mounting)
 app.use('/api', authRoutes);
 app.use('/', campaignRoutes);
 app.use('/', eventRoutes);
@@ -36,6 +48,11 @@ app.use('/', incomeRoutes);
 app.use('/', financialRoutes);
 app.use('/', supporterRoutes);
 
+// API Routes - NEW Sprint Features (need to check the route structure)
+app.use('/api', userRoutes);    // User management - ONLY this one needs /api
+app.use('/api', prizeRoutes);      // Prize management
+app.use('/api', taskRoutes);       // Task management
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
@@ -43,7 +60,13 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     message: 'Fundraisely API is running!',
     database: database.connection ? 'Connected' : 'Disconnected',
-    socket: socketManager.io ? 'Connected' : 'Disconnected'
+    socket: socketManager.io ? 'Connected' : 'Disconnected',
+    sprint_features: {
+      user_management: '✅ NEW',
+      price_management: '✅ NEW', 
+      task_management: '✅ NEW',
+      communication_fix: '✅ FIXED'
+    }
   });
 });
 
@@ -54,25 +77,14 @@ app.get('/api/test', (req, res) => {
     config: {
       port: config.PORT,
       frontend: config.FRONTEND_URL
+    },
+    new_endpoints: {
+      users: '/api/clubs/:clubId/users',
+      prizes: '/api/events/:eventId/prizes', 
+      tasks: '/api/events/:eventId/tasks'
     }
   });
 });
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('❌ Unhandled error:', error);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { details: error.message })
-  });
-});
-
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Required for __dirname in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Serve frontend static files in production
 const clientBuildPath = path.resolve(__dirname, '../../client/build');
@@ -88,6 +100,14 @@ app.get('*', (req, res, next) => {
   }
 });
 
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('❌ Unhandled error:', error);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { details: error.message })
+  });
+});
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -108,6 +128,7 @@ async function startServer() {
       console.log(`📊 Socket.IO server running`);
       console.log(`🗄️ Database connected`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🆕 Sprint Features: User, Prize, Task Management + Communication Fix`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

@@ -8,7 +8,7 @@ import {
   MapPin,
   Calendar,
   DollarSign, 
-  TrendingUp, 
+
   MessageCircle,
   Clock,
   Edit,
@@ -19,7 +19,8 @@ import {
   Award,
   AlertCircle,
   CheckCircle,
-  Target
+  Target,
+
 } from 'lucide-react';
 import { Supporter } from '../../../types/types'; // Import the full interface
 
@@ -31,6 +32,7 @@ interface SupporterCardProps {
   onQuickCall?: (supporter: Supporter) => void;
   onQuickEmail?: (supporter: Supporter) => void;
   className?: string;
+  
 }
 
 const SupporterCard: React.FC<SupporterCardProps> = ({ 
@@ -74,14 +76,17 @@ const SupporterCard: React.FC<SupporterCardProps> = ({
   };
 
   // Get supporter type styling
-  const getTypeStyle = () => {
-    const styles = {
-      volunteer: { bg: 'bg-blue-50', text: 'text-blue-700', icon: Heart },
-      donor: { bg: 'bg-green-50', text: 'text-green-700', icon: DollarSign },
-      sponsor: { bg: 'bg-purple-50', text: 'text-purple-700', icon: Building2 }
-    };
-    return styles[supporter.type];
+const getTypeStyle = () => {
+  const styles = {
+    volunteer: { bg: 'bg-blue-50', text: 'text-blue-700', icon: Heart },
+    donor: { bg: 'bg-green-50', text: 'text-green-700', icon: DollarSign },
+    sponsor: { bg: 'bg-purple-50', text: 'text-purple-700', icon: Building2 }
   };
+
+  // Fallback for unexpected types
+  return styles[supporter.type] || { bg: 'bg-gray-50', text: 'text-gray-700', icon: User };
+};
+
 
   // Calculate engagement score (simple algorithm)
   const getEngagementScore = () => {
@@ -201,7 +206,9 @@ const SupporterCard: React.FC<SupporterCardProps> = ({
           {/* Supporter Type */}
           <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${typeStyle.bg} ${typeStyle.text} border`}>
             <TypeIcon className="w-3 h-3 mr-1" />
-            {supporter.type.charAt(0).toUpperCase() + supporter.type.slice(1)}
+           {supporter.type
+  ? supporter.type.charAt(0).toUpperCase() + supporter.type.slice(1)
+  : 'Unknown'}
           </div>
           
           {/* Relationship Strength */}

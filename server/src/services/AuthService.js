@@ -6,15 +6,29 @@ import config from '../config/environment.js';
 
 export class AuthService {
   /**
-   * Register new club
+   * Register new club with GDPR compliance
    */
   async register(req, res) {
     try {
-      const { name, email, password } = req.body;
+      const { 
+        name, 
+        email, 
+        password, 
+        gdprConsent, 
+        privacyPolicyAccepted, 
+        marketingConsent = false 
+      } = req.body;
       const prefix = config.DB_TABLE_PREFIX;
       
       if (!name || !email || !password) {
         return res.status(400).json({ error: 'Name, email, and password are required' });
+      }
+
+      // Validate GDPR requirements
+      if (!gdprConsent || !privacyPolicyAccepted) {
+        return res.status(400).json({ 
+          error: 'GDPR consent and privacy policy acceptance are required' 
+        });
       }
 
       // Check if club exists
@@ -27,32 +41,94 @@ export class AuthService {
         return res.status(400).json({ error: 'Club with this email already exists' });
       }
 
-      // Create club and user
+      // Get client info for consent logging
+      const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+      const userAgent = req.get('User-Agent') || 'unknown';
+      const consentDate = new Date();
+
+      // Create club and user with GDPR data
       const hashedPassword = await bcrypt.hash(password, 12);
       const clubId = uuidv4();
       const userId = uuidv4();
       
-      // Insert club
-      await database.connection.execute(
-        `INSERT INTO ${prefix}clubs (id, name, email, password_hash) VALUES (?, ?, ?, ?)`,
-        [clubId, name, email, hashedPassword]
-      );
-      
-      // Insert host user
-      await database.connection.execute(
-        `INSERT INTO ${prefix}users (id, club_id, name, email, role) VALUES (?, ?, ?, ?, ?)`,
-        [userId, clubId, name, email, 'host']
-      );
+      // Start transaction
+      await database.connection.beginTransaction();
 
-      // Generate token
-      const token = jwt.sign({ userId, clubId }, config.JWT_SECRET, { expiresIn: '7d' });
+      try {
+        // Insert club
+        await database.connection.execute(
+          `INSERT INTO ${prefix}clubs (id, name, email, password_hash) VALUES (?, ?, ?, ?)`,
+          [clubId, name, email, hashedPassword]
+        );
+        
+        // Insert host user with GDPR consent data
+        await database.connection.execute(
+          `INSERT INTO ${prefix}users (
+            id, club_id, name, email, role, 
+            gdpr_consent, privacy_policy_accepted, marketing_consent, 
+            consent_date, consent_ip, consent_user_agent, consent_version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId, clubId, name, email, 'host',
+            gdprConsent, privacyPolicyAccepted, marketingConsent,
+            consentDate, clientIp, userAgent, '1.0'
+          ]
+        );
 
-      res.status(201).json({
-        message: 'Club registered successfully',
-        token,
-        user: { id: userId, club_id: clubId, name, email, role: 'host' },
-        club: { id: clubId, name, email }
-      });
+        // Log consent for audit trail (if consent_log table exists)
+        const consentTypes = [
+          { type: 'gdpr', given: gdprConsent },
+          { type: 'privacy_policy', given: privacyPolicyAccepted },
+          { type: 'marketing', given: marketingConsent }
+        ];
+
+        for (const consent of consentTypes) {
+          if (consent.given) {
+            await database.connection.execute(
+              `INSERT INTO ${prefix}consent_log (
+                id, user_id, consent_type, consent_given, 
+                consent_date, ip_address, user_agent, consent_version
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                uuidv4(), userId, consent.type, consent.given,
+                consentDate, clientIp, userAgent, '1.0'
+              ]
+            ).catch(() => {
+              // Ignore error if consent_log table doesn't exist
+              console.log('Consent log table not found, skipping audit trail');
+            });
+          }
+        }
+
+        // Commit transaction
+        await database.connection.commit();
+
+        // Generate token
+        const token = jwt.sign({ userId, clubId }, config.JWT_SECRET, { expiresIn: '7d' });
+
+        res.status(201).json({
+          message: 'Club registered successfully',
+          token,
+          user: { 
+            id: userId, 
+            club_id: clubId, 
+            name, 
+            email, 
+            role: 'host' 
+          },
+          club: { 
+            id: clubId, 
+            name, 
+            email 
+          }
+        });
+
+      } catch (dbError) {
+        // Rollback transaction
+        await database.connection.rollback();
+        throw dbError;
+      }
+
     } catch (error) {
       console.error('❌ Registration error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -60,7 +136,7 @@ export class AuthService {
   }
 
   /**
-   * Login club
+   * Login club (unchanged)
    */
   async login(req, res) {
     try {
@@ -118,7 +194,7 @@ export class AuthService {
   }
 
   /**
-   * Get user profile
+   * Get user profile (unchanged)
    */
   async getProfile(req, res) {
     try {
@@ -138,6 +214,55 @@ export class AuthService {
       });
     } catch (error) {
       console.error('❌ Get user error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /**
+   * Update consent preferences
+   */
+  async updateConsent(req, res) {
+    try {
+      const { marketingConsent } = req.body;
+      const userId = req.user.id;
+      const prefix = config.DB_TABLE_PREFIX;
+
+      // Get client info
+      const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+      const userAgent = req.get('User-Agent') || 'unknown';
+
+      // Update user marketing consent
+      await database.connection.execute(
+        `UPDATE ${prefix}users SET 
+          marketing_consent = ?, 
+          consent_date = CURRENT_TIMESTAMP,
+          consent_ip = ?,
+          consent_user_agent = ?
+        WHERE id = ?`,
+        [marketingConsent, clientIp, userAgent, userId]
+      );
+
+      // Log consent change
+      await database.connection.execute(
+        `INSERT INTO ${prefix}consent_log (
+          id, user_id, consent_type, consent_given, 
+          ip_address, user_agent, consent_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          uuidv4(), userId, 'marketing', marketingConsent,
+          clientIp, userAgent, '1.0'
+        ]
+      ).catch(() => {
+        // Ignore if consent_log table doesn't exist
+      });
+
+      res.json({
+        message: 'Consent preferences updated successfully',
+        marketingConsent
+      });
+
+    } catch (error) {
+      console.error('❌ Update consent error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

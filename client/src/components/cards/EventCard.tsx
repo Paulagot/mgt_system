@@ -1,4 +1,3 @@
-// client/src/components/cards/EventCard.tsx
 import React from 'react';
 import { 
   Calendar, 
@@ -10,7 +9,8 @@ import {
   Edit,
   Trash2,
   Eye,
-  Target
+  Target,
+  Gift // NEW: Added for prizes
 } from 'lucide-react';
 import { Event } from '../../types/types';
 
@@ -19,8 +19,11 @@ interface EventCardProps {
   onEdit: (event: Event) => void;
   onDelete: (eventId: string) => void;
   onView: (event: Event) => void;
-  campaignName?: string; // Optional campaign name for display
+  campaignName?: string;
   className?: string;
+  // NEW: Optional prize data
+  prizeCount?: number;
+  prizeValue?: number;
 }
 
 const EventCard: React.FC<EventCardProps> = ({ 
@@ -29,19 +32,21 @@ const EventCard: React.FC<EventCardProps> = ({
   onDelete, 
   onView,
   campaignName,
-  className = ""
+  className = "",
+  prizeCount = 0, // NEW
+  prizeValue = 0  // NEW
 }) => {
-  // Calculate progress percentage
+  // Calculate progress percentage with safe defaults
   const progressPercentage = event.goal_amount > 0 
-    ? Math.min((event.actual_amount / event.goal_amount) * 100, 100) 
+    ? Math.min(((event.actual_amount || 0) / event.goal_amount) * 100, 100) 
     : 0;
 
   // Format currency
-  const formatCurrency = (amount: number) => `£${amount.toLocaleString()}`;
+  const formatCurrency = (amount: number | undefined) => `£${(amount || 0).toLocaleString()}`;
 
-  // Format date
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('en-GB', { 
+  // Format date string properly
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-GB', { 
       weekday: 'short',
       day: 'numeric', 
       month: 'short',
@@ -69,10 +74,11 @@ const EventCard: React.FC<EventCardProps> = ({
     }
   };
 
-  // Profit/loss styling
-  const getProfitStyle = (profit: number) => {
-    if (profit > 0) return 'text-green-600';
-    if (profit < 0) return 'text-red-600';
+  // Profit/loss styling with safe defaults
+  const getProfitStyle = (profit: number | undefined) => {
+    const profitValue = profit || 0;
+    if (profitValue > 0) return 'text-green-600';
+    if (profitValue < 0) return 'text-red-600';
     return 'text-gray-600';
   };
 
@@ -165,6 +171,17 @@ const EventCard: React.FC<EventCardProps> = ({
               <span className="truncate">{campaignName}</span>
             </div>
           )}
+
+          {/* NEW: Prize information */}
+          {prizeCount > 0 && (
+            <div className="flex items-center text-sm text-gray-600">
+              <Gift className="w-4 h-4 mr-2 text-gray-400" />
+              <span>
+                {prizeCount} prize{prizeCount !== 1 ? 's' : ''} 
+                {prizeValue > 0 && ` (${formatCurrency(prizeValue)})`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Financial summary */}
@@ -181,7 +198,7 @@ const EventCard: React.FC<EventCardProps> = ({
             </span>
           </div>
           
-          {event.total_expenses > 0 && (
+          {(event.total_expenses || 0) > 0 && (
             <div className="flex justify-between items-center text-sm">
               <span className="text-gray-600">Expenses:</span>
               <span className="font-medium text-red-600">
@@ -223,16 +240,16 @@ const EventCard: React.FC<EventCardProps> = ({
         {/* Status indicators */}
         <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
           <span>
-            Created {new Date(event.created_at).toLocaleDateString('en-GB')}
+            Created {formatDate(event.created_at)}
           </span>
           <div className="flex items-center gap-2">
-            {event.net_profit > 0 && (
+            {(event.net_profit || 0) > 0 && (
               <div className="flex items-center text-green-600">
                 <TrendingUp className="w-3 h-3 mr-1" />
                 Profitable
               </div>
             )}
-            {event.net_profit < 0 && (
+            {(event.net_profit || 0) < 0 && (
               <div className="flex items-center text-red-600">
                 <TrendingDown className="w-3 h-3 mr-1" />
                 Loss

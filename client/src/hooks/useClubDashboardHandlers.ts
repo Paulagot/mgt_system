@@ -1,13 +1,13 @@
 import { useCallback } from 'react';
 import { apiService } from '../services/apiService';
-import { supporterService } from '../services';
+import { supporterService, prizeService } from '../services';
 import {
   Event,
   Campaign,
   Supporter,
   CreateEventForm,
   CreateCampaignForm,
-   CreateSupporterData 
+  CreateSupporterData 
 } from '../types/types';
 
 interface UseHandlersProps {
@@ -31,6 +31,8 @@ interface UseHandlersProps {
   setShowEditSupporterForm: (open: boolean) => void;
   setSelectedSupporter: (supporter: Supporter | null) => void;
   setShowSupporterDetailPanel: (open: boolean) => void;
+  // NEW: Add loadPrizeData function
+  loadPrizeData?: () => void;
 }
 
 export function useClubDashboardHandlers({
@@ -54,6 +56,7 @@ export function useClubDashboardHandlers({
   setShowEditSupporterForm,
   setSelectedSupporter,
   setShowSupporterDetailPanel,
+  loadPrizeData, // NEW: Accept loadPrizeData as parameter
 }: UseHandlersProps) {
   const getCampaignName = useCallback(
     (campaignId?: string) => {
@@ -80,26 +83,38 @@ export function useClubDashboardHandlers({
         await apiService.deleteEvent(eventId);
         deleteEvent(eventId);
         loadFinancialData();
+        // NEW: Reload prize data when events change (only if function is provided)
+        if (loadPrizeData) {
+          setTimeout(() => loadPrizeData(), 100);
+        }
       } catch (err) {
         console.error('Failed to delete event:', err);
         alert('Failed to delete event. Please try again.');
       }
     }
-  }, [events, deleteEvent, loadFinancialData]);
+  }, [events, deleteEvent, loadFinancialData, loadPrizeData]);
 
   const handleCreateEvent = useCallback(async (eventData: CreateEventForm) => {
     const response = await apiService.createEvent(eventData);
     addEvent(response.event);
     loadFinancialData();
+    // NEW: Reload prize data when events change (only if function is provided)
+    if (loadPrizeData) {
+      setTimeout(() => loadPrizeData(), 100);
+    }
     return response;
-  }, [addEvent, loadFinancialData]);
+  }, [addEvent, loadFinancialData, loadPrizeData]);
 
   const handleUpdateEvent = useCallback(async (id: string, eventData: CreateEventForm) => {
     const response = await apiService.updateEvent(id, eventData);
     updateEvent(id, response.event);
     loadFinancialData();
+    // NEW: Reload prize data when events change (only if function is provided)
+    if (loadPrizeData) {
+      setTimeout(() => loadPrizeData(), 100);
+    }
     return response;
-  }, [updateEvent, loadFinancialData]);
+  }, [updateEvent, loadFinancialData, loadPrizeData]);
 
   const handleEditCampaign = useCallback((c: Campaign) => {
     setCampaignToEdit(c);
@@ -155,17 +170,17 @@ export function useClubDashboardHandlers({
     }
   }, [supporters, loadClubData]);
 
-const handleCreateSupporter = useCallback(async (data: CreateSupporterData) => {
-  const response = await supporterService.createSupporter(club.id, data);
-  loadClubData();
-  return response;
-}, [club.id, loadClubData]);
+  const handleCreateSupporter = useCallback(async (data: CreateSupporterData) => {
+    const response = await supporterService.createSupporter(club.id, data);
+    loadClubData();
+    return response;
+  }, [club.id, loadClubData]);
 
-const handleUpdateSupporter = useCallback(async (id: string, data: CreateSupporterData) => {
-  const response = await supporterService.updateSupporter(id, data);
-  loadClubData();
-  return response;
-}, [loadClubData]);
+  const handleUpdateSupporter = useCallback(async (id: string, data: CreateSupporterData) => {
+    const response = await supporterService.updateSupporter(id, data);
+    loadClubData();
+    return response;
+  }, [loadClubData]);
 
   const handleViewSupporter = useCallback((s: Supporter) => {
     setSelectedSupporter(s);

@@ -1,8 +1,8 @@
+// client/src/components/supporters/SupportersTab.tsx
 import React from 'react';
 import { Plus, Users } from 'lucide-react';
 import SupporterCard from '../supporters/cards/SupporterCard';
 import { Supporter } from '../../types/types';
-
 
 interface SupportersTabProps {
   supporters: Supporter[];
@@ -23,6 +23,21 @@ const SupportersTab: React.FC<SupportersTabProps> = ({
   onQuickCall,
   onQuickEmail,
 }) => {
+  // Handle nested array structure (defensive programming)
+  let safeSupporters: Supporter[] = [];
+  
+  if (Array.isArray(supporters)) {
+    // Check if it's a nested array (array containing array)
+    if (supporters.length > 0 && Array.isArray(supporters[0])) {
+      safeSupporters = supporters[0]; // Take the first nested array
+    } else {
+      // It's already a flat array
+      safeSupporters = supporters;
+    }
+  } else {
+    safeSupporters = [];
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -36,19 +51,27 @@ const SupportersTab: React.FC<SupportersTabProps> = ({
         </button>
       </div>
 
-      {supporters.length > 0 ? (
+      {safeSupporters.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {supporters.map((supporter) => (
-            <SupporterCard
-              key={supporter.id}
-              supporter={supporter}
-              onEdit={onEditSupporter}
-              onDelete={onDeleteSupporter}
-              onView={onViewSupporter}
-              onQuickCall={onQuickCall}
-              onQuickEmail={onQuickEmail}
-            />
-          ))}
+          {safeSupporters.map((supporter, index) => {
+            // Safety check for null/undefined supporters
+            if (!supporter || !supporter.id) {
+              console.warn(`⚠️ Invalid supporter at index ${index}:`, supporter);
+              return null;
+            }
+
+            return (
+              <SupporterCard
+                key={supporter.id}
+                supporter={supporter}
+                onEdit={onEditSupporter}
+                onDelete={onDeleteSupporter}
+                onView={onViewSupporter}
+                onQuickCall={onQuickCall}
+                onQuickEmail={onQuickEmail}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12">

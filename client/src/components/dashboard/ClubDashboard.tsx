@@ -1,3 +1,4 @@
+// client/src/components/dashboard/ClubDashboard.tsx (UPDATED - add prizes tab)
 import React from 'react';
 import DashboardHeader from './DashboardHeader';
 import DashboardTabs from './DashboardTabs';
@@ -6,6 +7,7 @@ import CampaignsTab from './CampaignsTab';
 import EventsTab from './EventsTab';
 import SupportersTab from './SupportersTab';
 import FinancialsTab from './FinancialsTab';
+import PrizesTab from '../prizes/PrizesTab'; // NEW: Import PrizesTab
 import CreateEventForm from '../events/CreateEventForm';
 import CreateCampaignForm from '../campaigns/CreateCampaignForm';
 import CreateSupporterForm from '../supporters/forms/CreateSupporterForm';
@@ -73,47 +75,64 @@ export default function ClubDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       
-{activeTab === 'overview' && (
-  <OverviewTab
-    metrics={{
-      total_raised: dashboard.financials?.total_income || 0,
-      active_campaigns: dashboard.campaigns.length,
-      upcoming_events: dashboard.events.filter(e => new Date(e.event_date) > new Date()).length,
-      total_supporters: dashboard.supporters.length,
-      // Add the missing properties:
-      supporter_breakdown: {
-        volunteers: dashboard.supporters.filter(s => s.type === 'volunteer').length,
-        donors: dashboard.supporters.filter(s => s.type === 'donor').length,
-        sponsors: dashboard.supporters.filter(s => s.type === 'sponsor').length,
-      },
-      top_donors: dashboard.supporters
-        .filter(s => s.type === 'donor' && s.total_donated && s.total_donated > 0)
-        .sort((a, b) => (b.total_donated || 0) - (a.total_donated || 0))
-        .slice(0, 5),
-      recent_supporters: dashboard.supporters
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 5),
-      pending_follow_ups: dashboard.supporters.filter(s => 
-        s.next_contact_date && new Date(s.next_contact_date) <= new Date()
-      ).length,
-    }}
-    financialData={{
-      monthly_income: dashboard.financials?.total_income || 0,
-      monthly_expenses: dashboard.financials?.total_expenses || 0,
-      net_profit: dashboard.financials?.net_profit || 0,
-      pending_expenses: 0,
-    }}
-    upcomingEvents={dashboard.events.filter(e => new Date(e.event_date) > new Date()).slice(0, 2)}
-    campaigns={dashboard.campaigns}
-    getCampaignName={handlers.getCampaignName}
-    onEditEvent={handlers.handleEditEvent}
-    onDeleteEvent={handlers.handleDeleteEvent}
-    onViewEvent={() => {}}
-    onEditCampaign={handlers.handleEditCampaign}
-    onDeleteCampaign={handlers.handleDeleteCampaign}
-    onViewCampaign={() => {}}
-  />
-)}
+        {activeTab === 'overview' && (
+          <OverviewTab
+            metrics={{
+              total_raised: dashboard.financials?.total_income || 0,
+              active_campaigns: dashboard.campaigns.length,
+              upcoming_events: dashboard.events.filter(e => new Date(e.event_date) > new Date()).length,
+              totalEvents: dashboard.events.length,
+              totalCampaigns: dashboard.campaigns.length,
+              totalExpenses: dashboard.financials?.total_expenses || 0,
+              totalIncome: dashboard.financials?.total_income || 0,
+              netProfit: dashboard.financials?.net_profit || 0,
+              totalSupporters: dashboard.supporters.length,
+              totalDonors: dashboard.supporters.filter(s => s.type === 'donor').length,
+              totalVolunteers: dashboard.supporters.filter(s => s.type === 'volunteer').length,
+              totalSponsors: dashboard.supporters.filter(s => s.type === 'sponsor').length,
+              avgDonation: dashboard.supporters.filter(s => s.type === 'donor' && s.average_donation)
+                .reduce((sum, s) => sum + (s.average_donation || 0), 0) / 
+                Math.max(dashboard.supporters.filter(s => s.type === 'donor' && s.average_donation).length, 1),
+              donorRetentionRate: 85,
+              totalUsers: 0,
+              totalPrizes: 0, // TODO: Load from prizes when implemented
+              totalPrizeValue: 0, // TODO: Load from prizes when implemented
+              totalTasks: 0,
+              overdueTasks: 0,
+              completedTasks: 0,
+              supporter_breakdown: {
+                volunteers: dashboard.supporters.filter(s => s.type === 'volunteer').length,
+                donors: dashboard.supporters.filter(s => s.type === 'donor').length,
+                sponsors: dashboard.supporters.filter(s => s.type === 'sponsor').length,
+              },
+              top_donors: dashboard.supporters
+                .filter(s => s.type === 'donor' && s.total_donated && s.total_donated > 0)
+                .sort((a, b) => (b.total_donated || 0) - (a.total_donated || 0))
+                .slice(0, 5),
+              recent_supporters: dashboard.supporters
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .slice(0, 5),
+              pending_follow_ups: dashboard.supporters.filter(s => 
+                s.next_contact_date && new Date(s.next_contact_date) <= new Date()
+              ).length,
+            }}
+            financialData={{
+              monthly_income: dashboard.financials?.total_income || 0,
+              monthly_expenses: dashboard.financials?.total_expenses || 0,
+              net_profit: dashboard.financials?.net_profit || 0,
+              pending_expenses: 0,
+            }}
+            upcomingEvents={dashboard.events.filter(e => new Date(e.event_date) > new Date()).slice(0, 2)}
+            campaigns={dashboard.campaigns}
+            getCampaignName={handlers.getCampaignName}
+            onEditEvent={handlers.handleEditEvent}
+            onDeleteEvent={handlers.handleDeleteEvent}
+            onViewEvent={() => {}}
+            onEditCampaign={handlers.handleEditCampaign}
+            onDeleteCampaign={handlers.handleDeleteCampaign}
+            onViewCampaign={() => {}}
+          />
+        )}
 
         {activeTab === 'campaigns' && (
           <CampaignsTab
@@ -133,6 +152,7 @@ export default function ClubDashboard() {
             onEditEvent={handlers.handleEditEvent}
             onDeleteEvent={handlers.handleDeleteEvent}
             onViewEvent={() => {}}
+             getPrizeDataForEvent={dashboard.getPrizeDataForEvent}
           />
         )}
 
@@ -145,6 +165,13 @@ export default function ClubDashboard() {
             onViewSupporter={handlers.handleViewSupporter}
             onQuickCall={(s) => alert(`Calling ${s.name}`)}
             onQuickEmail={(s) => window.open(`mailto:${s.email}`)}
+          />
+        )}
+
+        {/* NEW: Prizes Tab */}
+        {activeTab === 'prizes' && (
+          <PrizesTab
+            events={dashboard.events}
           />
         )}
 
@@ -212,16 +239,21 @@ export default function ClubDashboard() {
         />
       )}
 
-      {dashboard.showSupporterDetailPanel && dashboard.selectedSupporter && (
-        <SupporterDetailPanel
-          supporter={dashboard.selectedSupporter}
-          isOpen={dashboard.showSupporterDetailPanel}
-          onClose={() => {
-            dashboard.setShowSupporterDetailPanel(false);
-            dashboard.setSelectedSupporter(null);
-          }}
-        />
-      )}
+    {dashboard.showSupporterDetailPanel && dashboard.selectedSupporter && (
+  <SupporterDetailPanel
+    supporter={dashboard.selectedSupporter}
+    isOpen={dashboard.showSupporterDetailPanel}
+    onClose={() => {
+      dashboard.setShowSupporterDetailPanel(false);
+      dashboard.setSelectedSupporter(null);
+    }}
+    onEdit={handlers.handleEditSupporter}           // Add this
+    onDelete={handlers.handleDeleteSupporter}       // Add this  
+    campaigns={dashboard.campaigns}                  // Add this
+    events={dashboard.events}                        // Add this
+  />
+)}
     </div>
   );
 }
+

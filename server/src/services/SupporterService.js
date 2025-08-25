@@ -64,7 +64,7 @@ class SupporterService {
     const commPrefsJson = communication_preferences && typeof communication_preferences === 'object' 
       ? JSON.stringify(communication_preferences) : null;
 
-    const [result] = await database.connection.execute(
+    const result = await database.execute(
       `INSERT INTO ${this.prefix}supporters (
         id, club_id, name, type, notes,
         email, phone, address_line1, address_line2, city, state_province, postal_code, country,
@@ -131,21 +131,39 @@ class SupporterService {
 
     query += ' ORDER BY created_at DESC';
 
-    const [rows] = await database.connection.execute(query, params);
+    const rows = await database.execute(query, params);
     
     // Parse JSON fields for each supporter
     return (rows || []).map(supporter => this.parseJsonFields(supporter));
   }
 
-  async getSupporterById(supporterId, clubId) {
+async getSupporterById(supporterId, clubId) {
+  try {
     const [rows] = await database.connection.execute(
       `SELECT * FROM ${this.prefix}supporters WHERE id = ? AND club_id = ?`,
       [supporterId, clubId]
     );
 
     const supporter = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-    return supporter ? this.parseJsonFields(supporter) : null;
+    
+    if (!supporter) return null;
+    
+    // Calculate actual totals
+    const contributions = await this.calculateSupporterTotalContributions(supporterId);
+    
+    // Add calculated totals to supporter object
+    const enhancedSupporter = this.parseJsonFields(supporter);
+    enhancedSupporter.calculated_total_donated = contributions.total_contributions;
+    enhancedSupporter.calculated_monetary_donations = contributions.monetary_donations;
+    enhancedSupporter.calculated_prize_donations = contributions.prize_donations;
+    enhancedSupporter.calculated_sponsorships = contributions.sponsorships;
+    
+    return enhancedSupporter;
+  } catch (error) {
+    console.error('Error getting supporter by ID:', error);
+    throw error;
   }
+}
 
   async updateSupporter(supporterId, clubId, updateData) {
     const allowedFields = [
@@ -185,7 +203,7 @@ class SupporterService {
     const values = updateFields.map(field => processedData[field] || null);
     values.push(supporterId, clubId);
 
-    const [result] = await database.connection.execute(
+    const result = await database.execute(
       `UPDATE ${this.prefix}supporters SET ${setClause} WHERE id = ? AND club_id = ?`,
       values
     );
@@ -199,17 +217,17 @@ class SupporterService {
 
   async deleteSupporter(supporterId, clubId) {
     // Check if supporter is referenced in communications, prizes, or tasks
-    const [commRows] = await database.connection.execute(
+    const commRows = await database.execute(
       `SELECT COUNT(*) as comm_count FROM ${this.prefix}communications WHERE supporter_id = ?`,
       [supporterId]
     );
 
-    const [prizeRows] = await database.connection.execute(
+    const prizeRows = await database.execute(
       `SELECT COUNT(*) as prize_count FROM ${this.prefix}prizes WHERE donated_by = ?`,
       [supporterId]
     );
 
-    const [taskRows] = await database.connection.execute(
+    const taskRows = await database.execute(
       `SELECT COUNT(*) as task_count FROM ${this.prefix}tasks WHERE assigned_to = ?`,
       [supporterId]
     );
@@ -222,7 +240,7 @@ class SupporterService {
       throw new Error('Cannot delete supporter with associated communications, prizes, or tasks');
     }
 
-    const [result] = await database.connection.execute(
+    const result = await database.execute(
       `DELETE FROM ${this.prefix}supporters WHERE id = ? AND club_id = ?`,
       [supporterId, clubId]
     );
@@ -234,7 +252,7 @@ class SupporterService {
 
   async getDonorStats(clubId) {
     // Get donor counts by relationship strength
-    const [relationshipRows] = await database.connection.execute(
+    const relationshipRows = await database.execute(
       `SELECT relationship_strength, COUNT(*) as count 
        FROM ${this.prefix}supporters 
        WHERE club_id = ? AND type = 'donor'
@@ -243,7 +261,7 @@ class SupporterService {
     );
 
     // Get donor counts by lifecycle stage
-    const [lifecycleRows] = await database.connection.execute(
+    const lifecycleRows = await database.execute(
       `SELECT lifecycle_stage, COUNT(*) as count 
        FROM ${this.prefix}supporters 
        WHERE club_id = ? AND type = 'donor'
@@ -252,7 +270,7 @@ class SupporterService {
     );
 
     // Get total donation metrics
-    const [totalRows] = await database.connection.execute(
+    const totalRows = await database.execute(
       `SELECT 
         COUNT(*) as total_donors,
         SUM(total_donated) as total_amount_raised,
@@ -266,7 +284,7 @@ class SupporterService {
     );
 
     // Get recent donor activity (last 30 days)
-    const [recentRows] = await database.connection.execute(
+    const recentRows = await database.execute(
       `SELECT COUNT(*) as new_donors_this_month
        FROM ${this.prefix}supporters 
        WHERE club_id = ? AND type = 'donor'
@@ -296,7 +314,7 @@ class SupporterService {
   }
 
   async getTopDonors(clubId, limit = 10) {
-    const [rows] = await database.connection.execute(
+    const rows = await database.execute(
       `SELECT * FROM ${this.prefix}supporters 
        WHERE club_id = ? AND type = 'donor' AND total_donated > 0
        ORDER BY total_donated DESC 
@@ -308,7 +326,7 @@ class SupporterService {
   }
 
   async getLapsedDonors(clubId, monthsThreshold = 12) {
-    const [rows] = await database.connection.execute(
+    const rows = await database.execute(
       `SELECT * FROM ${this.prefix}supporters 
        WHERE club_id = ? AND type = 'donor' 
        AND total_donated > 0
@@ -322,7 +340,7 @@ class SupporterService {
 
   async getDonorRetentionRate(clubId, timeframe = 12) {
     // Get donors who gave in the previous period
-    const [previousPeriodRows] = await database.connection.execute(
+    const previousPeriodRows = await database.execute(
       `SELECT COUNT(DISTINCT id) as previous_donors
        FROM ${this.prefix}supporters 
        WHERE club_id = ? AND type = 'donor'
@@ -332,7 +350,7 @@ class SupporterService {
     );
 
     // Get donors who gave in both periods (retained)
-    const [retainedRows] = await database.connection.execute(
+    const retainedRows = await database.execute(
       `SELECT COUNT(DISTINCT id) as retained_donors
        FROM ${this.prefix}supporters 
        WHERE club_id = ? AND type = 'donor'
@@ -374,6 +392,9 @@ class SupporterService {
       created_by
     } = communicationData;
 
+    console.log('🔍 Communication Debug - created_by value:', created_by);
+  console.log('🔍 Communication Debug - communicationData:', communicationData);
+
     const commId = uuidv4();
 
     // Convert arrays to JSON
@@ -381,7 +402,7 @@ class SupporterService {
       ? JSON.stringify(attachment_urls) : null;
     const tagsJson = tags && Array.isArray(tags) ? JSON.stringify(tags) : null;
 
-    const [result] = await database.connection.execute(
+    const result = await database.execute(
       `INSERT INTO ${this.prefix}communications (
         id, club_id, supporter_id, type, direction, subject, notes,
         outcome, follow_up_required, follow_up_date, follow_up_notes,
@@ -397,13 +418,13 @@ class SupporterService {
     );
 
     // Update supporter's last_contact_date
-    await database.connection.execute(
+    await database.execute(
       `UPDATE ${this.prefix}supporters SET last_contact_date = NOW() WHERE id = ? AND club_id = ?`,
       [supporter_id, clubId]
     );
 
     // Get the created communication
-    const [rows] = await database.connection.execute(
+    const rows = await database.execute(
       `SELECT * FROM ${this.prefix}communications WHERE id = ?`,
       [commId]
     );
@@ -411,12 +432,23 @@ class SupporterService {
     return Array.isArray(rows) && rows.length > 0 ? this.parseJsonFields(rows[0]) : null;
   }
 
-async getCommunicationHistory(supporterId, clubId, limit = 50) {
+  async getCommunicationHistory(supporterId, clubId, limit = 50) {
   console.log('🔍 getCommunicationHistory called with:');
   console.log('  supporterId:', supporterId, typeof supporterId);
   console.log('  clubId:', clubId, typeof clubId);
   console.log('  limit:', limit, typeof limit);
   console.log('  prefix:', this.prefix);
+
+  // Ensure parameters are the correct types and not null/undefined
+  const supporterIdStr = String(supporterId || '');
+  const clubIdStr = String(clubId || '');
+  const limitNum = parseInt(limit) || 50;
+
+  // Validate required parameters
+  if (!supporterIdStr || !clubIdStr) {
+    console.error('❌ Missing required parameters');
+    return [];
+  }
 
   const sql = `SELECT c.*, u.name as created_by_name
                FROM ${this.prefix}communications c
@@ -425,15 +457,18 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
                ORDER BY c.created_at DESC
                LIMIT ?`;
   
-  const params = [supporterId, clubId, limit];
+ const params = [supporterIdStr, clubIdStr, limitNum.toString()];
   
   console.log('🔍 SQL Query:', sql);
   console.log('🔍 Parameters:', params);
   console.log('🔍 Parameter types:', params.map(p => typeof p));
 
   try {
+    // FIXED: Use database.connection.execute (not database.execute)
+
     const [rows] = await database.connection.execute(sql, params);
-    console.log('✅ Query successful, rows:', rows.length);
+     console.log('🔍 Raw query results:', rows);
+    console.log('✅ Query successful, rows:', rows?.length || 0);
     return (rows || []).map(comm => this.parseJsonFields(comm));
   } catch (error) {
     console.error('❌ SQL execution error:', error);
@@ -443,7 +478,10 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
       sqlState: error.sqlState,
       sqlMessage: error.sqlMessage
     });
-    throw error;
+    
+    // Return empty array instead of throwing to prevent panel crashes
+    console.warn('⚠️ Returning empty communications array due to database error');
+    return [];
   }
 }
 
@@ -465,7 +503,7 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
 
     query += ' ORDER BY c.follow_up_date ASC';
 
-    const [rows] = await database.connection.execute(query, params);
+    const rows = await database.execute(query, params);
     return (rows || []).map(task => this.parseJsonFields(task));
   }
 
@@ -511,7 +549,7 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
     const donorStats = await this.getDonorStats(clubId);
     
     // Get volunteer and sponsor counts
-    const [typeRows] = await database.connection.execute(
+    const typeRows = await database.execute(
       `SELECT type, COUNT(*) as count 
        FROM ${this.prefix}supporters 
        WHERE club_id = ? 
@@ -519,7 +557,7 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
       [clubId]
     );
 
-    const [totalRows] = await database.connection.execute(
+    const totalRows = await database.execute(
       `SELECT COUNT(*) as total_supporters FROM ${this.prefix}supporters WHERE club_id = ?`,
       [clubId]
     );
@@ -541,7 +579,6 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
     };
   }
 
-  // Keep existing methods but update for new schema
   async getSupporterEngagement(supporterId, clubId) {
     const supporter = await this.getSupporterById(supporterId, clubId);
     if (!supporter) {
@@ -551,18 +588,19 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
     // Get communication history
     const communications = await this.getCommunicationHistory(supporterId, clubId, 10);
 
-    // Get prizes donated (existing logic)
-    const [prizeRows] = await database.connection.execute(
-      `SELECT p.*, e.title as event_title, e.event_date 
+    // Get prizes donated with event details
+    const prizeRows = await database.execute(
+      `SELECT p.*, e.title as event_title, e.event_date, c.name as campaign_name
        FROM ${this.prefix}prizes p
        LEFT JOIN ${this.prefix}events e ON p.event_id = e.id
+       LEFT JOIN ${this.prefix}campaigns c ON e.campaign_id = c.id
        WHERE p.donated_by = ?
        ORDER BY p.created_at DESC`,
       [supporterId]
     );
 
-    // Get tasks assigned (existing logic)
-    const [taskRows] = await database.connection.execute(
+    // Get tasks assigned
+    const taskRows = await database.execute(
       `SELECT t.*, e.title as event_title, e.event_date 
        FROM ${this.prefix}tasks t
        LEFT JOIN ${this.prefix}events e ON t.event_id = e.id
@@ -571,9 +609,12 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
       [supporterId]
     );
 
-    const totalPrizeValue = Array.isArray(prizeRows) 
-      ? prizeRows.reduce((sum, prize) => sum + parseFloat(prize.value || 0), 0) 
-      : 0;
+    // Calculate prize metrics
+    const confirmedPrizes = (prizeRows || []).filter(p => p.confirmed);
+    const totalPrizeValue = confirmedPrizes.reduce((sum, prize) => sum + parseFloat(prize.value || 0), 0);
+
+    // Calculate total contributions
+    const contributions = await this.calculateSupporterTotalContributions(supporterId);
 
     const completedTasks = Array.isArray(taskRows) 
       ? taskRows.filter(task => task.status === 'done').length 
@@ -582,20 +623,26 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
     return {
       supporter,
       engagement: {
-        // Financial engagement
+        // Enhanced financial engagement
         total_donated: supporter.total_donated || 0,
         donation_count: supporter.donation_count || 0,
         average_donation: supporter.average_donation || 0,
         
-        // Prize donations
+        // Prize donation metrics
         total_prizes_donated: Array.isArray(prizeRows) ? prizeRows.length : 0,
+        confirmed_prizes: confirmedPrizes.length,
         total_prize_value: totalPrizeValue,
+        
+        // Combined contribution value
+        total_contributions: contributions.total_contributions,
+        monetary_contributions: contributions.monetary_donations,
+        prize_contributions: contributions.prize_donations,
         
         // Volunteer engagement
         total_tasks_assigned: Array.isArray(taskRows) ? taskRows.length : 0,
         completed_tasks: completedTasks,
-        pending_tasks: taskRows.length - completedTasks,
-        task_completion_rate: taskRows.length > 0 ? (completedTasks / taskRows.length * 100) : 0,
+        pending_tasks: (taskRows?.length || 0) - completedTasks,
+        task_completion_rate: (taskRows?.length || 0) > 0 ? (completedTasks / taskRows.length * 100) : 0,
         volunteer_hours_total: supporter.volunteer_hours_total || 0,
         
         // Communication engagement
@@ -610,9 +657,112 @@ async getCommunicationHistory(supporterId, clubId, limit = 50) {
     };
   }
 
-  // Keep other existing methods (bulkCreateSupporters, exportSupporters, etc.)
-  // but update them to work with new schema...
-  
+  async calculateTotalContributions(supporterId) {
+    try {
+      // Get monetary donations
+      const donationRows = await database.execute(
+        `SELECT COALESCE(total_donated, 0) as monetary_total FROM ${this.prefix}supporters WHERE id = ?`,
+        [supporterId]
+      );
+
+      // Get confirmed prize donations value
+      const prizeRows = await database.execute(
+        `SELECT COALESCE(SUM(value), 0) as prize_total 
+         FROM ${this.prefix}prizes 
+         WHERE donated_by = ? AND confirmed = true`,
+        [supporterId]
+      );
+
+      const monetaryTotal = donationRows[0]?.monetary_total || 0;
+      const prizeTotal = prizeRows[0]?.prize_total || 0;
+
+      return {
+        monetary_donations: parseFloat(monetaryTotal),
+        prize_donations: parseFloat(prizeTotal),
+        total_contributions: parseFloat(monetaryTotal) + parseFloat(prizeTotal)
+      };
+    } catch (error) {
+      console.error('Error calculating total contributions:', error);
+      throw new Error('Failed to calculate total contributions');
+    }
+  }
+
+ async calculateSupporterTotalContributions(supporterId) {
+  try {
+    console.log('🔍 Calculating contributions for supporter:', supporterId);
+    
+    // Get confirmed prize donations value
+    const [prizeRows] = await database.connection.execute(
+      `SELECT COALESCE(SUM(value), 0) as prize_total 
+       FROM ${this.prefix}prizes 
+       WHERE donated_by = ? AND confirmed = true`,
+      [supporterId]
+    );
+
+    // Try to get monetary donations from income records
+    let donationTotal = 0;
+    let sponsorshipTotal = 0;
+    
+    try {
+      const [donationRows] = await database.connection.execute(
+        `SELECT COALESCE(SUM(amount), 0) as donation_total 
+         FROM ${this.prefix}income 
+         WHERE supporter_id = ? AND payment_method IN ('donation', 'cash', 'card', 'transfer')`,
+        [supporterId]
+      );
+      
+      const [sponsorshipRows] = await database.connection.execute(
+        `SELECT COALESCE(SUM(amount), 0) as sponsorship_total 
+         FROM ${this.prefix}income 
+         WHERE supporter_id = ? AND payment_method = 'sponsorship'`,
+        [supporterId]
+      );
+      
+      donationTotal = parseFloat(donationRows[0]?.donation_total || 0);
+      sponsorshipTotal = parseFloat(sponsorshipRows[0]?.sponsorship_total || 0);
+    } catch (incomeError) {
+      console.warn('⚠️ Income table supporter_id column not available yet, using stored values');
+      
+      // Fallback to stored values in supporter record
+      const [supporterRows] = await database.connection.execute(
+        `SELECT COALESCE(total_donated, 0) as stored_donations 
+         FROM ${this.prefix}supporters 
+         WHERE id = ?`,
+        [supporterId]
+      );
+      
+      donationTotal = parseFloat(supporterRows[0]?.stored_donations || 0);
+      sponsorshipTotal = 0;
+    }
+
+    const prizeTotal = parseFloat(prizeRows[0]?.prize_total || 0);
+
+    console.log('💰 Contribution breakdown:', {
+      monetary: donationTotal,
+      prizes: prizeTotal,
+      sponsorships: sponsorshipTotal,
+      total: prizeTotal + donationTotal + sponsorshipTotal
+    });
+
+    return {
+      monetary_donations: donationTotal,
+      prize_donations: prizeTotal,
+      sponsorships: sponsorshipTotal,
+      total_contributions: prizeTotal + donationTotal + sponsorshipTotal
+    };
+  } catch (error) {
+    console.error('Error calculating supporter contributions:', error);
+    
+    // Return safe defaults if any query fails
+    return {
+      monetary_donations: 0,
+      prize_donations: 0,
+      sponsorships: 0,
+      total_contributions: 0
+    };
+  }
+}
+
   async bulkCreateSupporters(clubId, supportersData) {
     const results = [];
     const errors = [];

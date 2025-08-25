@@ -62,7 +62,7 @@ export default function EventExpenseManager({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Mock data for demonstration
+  // FIXED: Mock data with string dates to match Expense interface
   const mockExpenses: Expense[] = [
     {
       id: '1',
@@ -71,13 +71,12 @@ export default function EventExpenseManager({
       category: 'Venue',
       description: 'Community Hall Rental',
       amount: 120,
-      date: new Date('2025-06-20'), // Use Date object
+      date: '2025-06-20', // FIXED: String date
       vendor: 'Greenfield Community Center',
       payment_method: 'transfer',
       status: 'paid',
       created_by: 'user1',
-      created_at: new Date(),
-      receipt_url: undefined
+      created_at: '2025-06-20T10:00:00Z' // FIXED: String date
     },
     {
       id: '2',
@@ -86,13 +85,12 @@ export default function EventExpenseManager({
       category: 'Prizes',
       description: 'Gift Cards for Winners',
       amount: 85,
-      date: new Date('2025-06-22'), // Use Date object
+      date: '2025-06-22', // FIXED: String date
       vendor: 'Local Store',
       payment_method: 'card',
       status: 'pending',
       created_by: 'user1',
-      created_at: new Date(),
-      receipt_url: undefined
+      created_at: '2025-06-22T14:30:00Z' // FIXED: String date
     },
     {
       id: '3',
@@ -101,13 +99,12 @@ export default function EventExpenseManager({
       category: 'Supplies',
       description: 'Quiz Sheets Printing',
       amount: 25,
-      date: new Date('2025-06-25'), // Use Date object
+      date: '2025-06-25', // FIXED: String date
       vendor: 'PrintShop Plus',
       payment_method: 'cash',
       status: 'paid',
       created_by: 'user1',
-      created_at: new Date(),
-      receipt_url: undefined
+      created_at: '2025-06-25T09:15:00Z' // FIXED: String date
     }
   ];
 
@@ -164,12 +161,12 @@ export default function EventExpenseManager({
   const handleSubmit = () => {
     if (validateForm()) {
       if (editingExpense) {
-        // For updates, convert string date to Date object and include all fields
+        // FIXED: For updates, keep string date format
         const updateData: Partial<Expense> = {
           category: formData.category,
           description: formData.description,
           amount: formData.amount,
-          date: new Date(formData.date),
+          date: formData.date, // FIXED: Keep as string
           vendor: formData.vendor,
           payment_method: formData.payment_method,
           receipt_url: formData.receipt_url,
@@ -218,7 +215,7 @@ export default function EventExpenseManager({
       category: expense.category,
       description: expense.description,
       amount: expense.amount,
-      date: expense.date instanceof Date ? expense.date.toISOString().split('T')[0] : expense.date,
+      date: expense.date, // FIXED: Already a string, no conversion needed
       vendor: expense.vendor || '',
       payment_method: expense.payment_method,
       receipt_url: expense.receipt_url || '',
@@ -249,6 +246,11 @@ export default function EventExpenseManager({
       default:
         return 'bg-yellow-100 text-yellow-800';
     }
+  };
+
+  // FIXED: Helper function to format date strings
+  const formatDateString = (dateString: string): string => {
+    return new Date(dateString).toLocaleDateString('en-GB');
   };
 
   const totalExpenses = displayExpenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -283,21 +285,6 @@ export default function EventExpenseManager({
           <div className="flex items-center">
             <div className="flex-shrink-0 p-2 rounded-lg bg-red-100">
               <TrendingDown className="h-5 w-5 text-red-600" />
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  name="status"
-                  value={formData.status || 'pending'}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="paid">Paid</option>
-                </select>
-              </div>
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-600">Total Expenses</p>
@@ -551,7 +538,7 @@ export default function EventExpenseManager({
                     £{expense.amount.toFixed(2)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {expense.date instanceof Date ? expense.date.toLocaleDateString() : new Date(expense.date).toLocaleDateString()}
+                    {formatDateString(expense.date)} {/* FIXED: Use helper function */}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(expense.status)}`}>

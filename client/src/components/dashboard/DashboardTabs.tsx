@@ -1,3 +1,4 @@
+// client/src/components/dashboard/DashboardTabs.tsx
 import React from 'react';
 
 interface DashboardTabsProps {
@@ -5,7 +6,8 @@ interface DashboardTabsProps {
   onTabChange: (tab: string) => void;
 }
 
-const tabs = ['overview', 'campaigns', 'events', 'supporters', 'financials'];
+// FIXED: Add 'prizes' to the tabs array
+const tabs = ['overview', 'campaigns', 'events', 'supporters', 'prizes', 'financials'];
 
 const DashboardTabs: React.FC<DashboardTabsProps> = ({ activeTab, onTabChange }) => (
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
