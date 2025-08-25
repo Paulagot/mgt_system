@@ -10,7 +10,7 @@ const getSocketManager = (req) => req.app.get('socketManager');
 
 // Register club
 router.post('/clubs/register', 
-  validateRequired(['name', 'email', 'password']),
+  validateRequired(['name', 'email', 'password', 'gdprConsent', 'privacyPolicyAccepted']),
   authService.register.bind(authService)
 );
 
