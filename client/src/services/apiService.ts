@@ -47,24 +47,31 @@ class ApiService {
   }
 
   // 🔐 AUTHENTICATION ENDPOINTS
-async registerClub(clubData: {
-  name: string;
-  email: string;
-  password: string;
-  gdprConsent: boolean;
-  privacyPolicyAccepted: boolean;
-  marketingConsent?: boolean;
-}) {
-  return this.request<{
-    message: string;
-    token: string;
-    user: any;
-    club: any;
-  }>('/clubs/register', {
-    method: 'POST',
-    body: JSON.stringify(clubData),
-  });
-}
+  async registerClub(clubData: {
+    name: string;
+    email: string;
+    password: string;
+  }) {
+    return this.request<{
+      message: string;
+      token: string;
+      user: {
+        id: string;
+        club_id: string;
+        name: string;
+        email: string;
+        role: string;
+      };
+      club: {
+        id: string;
+        name: string;
+        email: string;
+      };
+    }>('/clubs/register', {
+      method: 'POST',
+      body: JSON.stringify(clubData),
+    });
+  }
 
   async loginClub(credentials: { email: string; password: string }) {
     return this.request<{
