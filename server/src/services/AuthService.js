@@ -85,7 +85,7 @@ export class AuthService {
           if (planRow?.id) freePlanId = planRow.id;
         } catch { /* plans table may not exist yet */ }
 
-        const DEFAULT_FREE_CREDITS = 2;
+        const DEFAULT_FREE_CREDITS = 3;
         await conn.execute(
           `INSERT INTO ${prefix}club_plan (club_id, plan_id, game_credits_remaining, overrides)
            VALUES (?, ?, ?, ?)`,
