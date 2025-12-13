@@ -256,7 +256,7 @@ const CreateEventForm: React.FC<CreateEventFormProps> = ({
           {/* Form */}
           <div className="px-6 py-4 space-y-6">
             {/* Debug Info - NEW: Show edit mode info */}
-            {process.env.NODE_ENV === 'development' && (
+            {import.meta.env.DEV && (
               <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs">
                 <strong>Debug Info:</strong> 
                 Mode: {editMode ? 'Edit' : 'Create'} | 

@@ -324,7 +324,7 @@ const CreateSupporterForm: React.FC<CreateSupporterFormProps> = ({
           <div className="flex-1 overflow-y-auto">
             <div className="px-6 py-6">
               {/* Debug Info */}
-              {process.env.NODE_ENV === 'development' && (
+              {import.meta.env.DEV && (
                 <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs mb-6">
                   <strong>Debug Info:</strong> 
                   Mode: {editMode ? 'Edit' : 'Create'} | 
