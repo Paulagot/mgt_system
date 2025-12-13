@@ -87,7 +87,7 @@ app.get('/api/test', (req, res) => {
 });
 
 // Serve frontend static files in production
-const clientBuildPath = path.resolve(__dirname, '../../client/build');
+const clientBuildPath = path.resolve(__dirname, '../../client/dist');
 app.use(express.static(clientBuildPath));
 
 // Serve index.html on unknown routes (for React Router)
@@ -105,7 +105,7 @@ app.use((error, req, res, next) => {
   console.error('❌ Unhandled error:', error);
   res.status(500).json({ 
     error: 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { details: error.message })
+    ...(import.meta.env.DEV && { details: error.message })
   });
 });
 
@@ -127,7 +127,7 @@ async function startServer() {
       console.log(`🚀 Server running on port ${config.PORT}`);
       console.log(`📊 Socket.IO server running`);
       console.log(`🗄️ Database connected`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🆕 Sprint Features: User, Prize, Task Management + Communication Fix`);
     });
   } catch (error) {

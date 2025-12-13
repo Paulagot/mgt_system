@@ -1,7 +1,7 @@
 // client/src/services/apiService.ts
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://mgtsystem-production.up.railway.app/api' 
-  : 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.PROD
+  ? "/api"
+  : "http://localhost:3001/api";
 
 class ApiService {
   private getAuthHeaders() {

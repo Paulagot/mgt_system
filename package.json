@@ -1,56 +1,36 @@
 {
-  "name": "fundraisely-club",
-  "version": "0.1.0",
+  "name": "fundraisely-client",
   "private": true,
+  "version": "0.1.0",
+  "type": "module",
+ "scripts": {
+  "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+  "server:dev": "npm run dev --prefix server",
+  "client:dev": "npm run dev --prefix client",
+
+  "install": "npm install --prefix client && npm install --prefix server",
+
+  "build": "npm run build --prefix client",
+  "start": "npm run build && npm run start --prefix server"
+}
+,
   "dependencies": {
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^13.5.0",
-    "@types/jest": "^27.5.2",
-    "@types/node": "^16.18.126",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
     "lucide-react": "^0.525.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-scripts": "5.0.1",
+    "react-router-dom": "^6.20.1",
     "socket.io-client": "^4.8.1",
-    "typescript": "^4.9.5",
-    "web-vitals": "^2.1.4",
     "zustand": "^5.0.6"
   },
-  "scripts": {
-    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
-    "server:dev": "cd server && npm run dev",
-    "client:dev": "cd client && npm start",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
-    "install": "npm install --prefix client && npm install --prefix server",
-    "build": "npm run build --prefix client",
-    "start": "npm run build && npm start --prefix server"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  },
   "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.21",
-    "concurrently": "^9.2.0",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.11"
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.2"
   }
 }
+
