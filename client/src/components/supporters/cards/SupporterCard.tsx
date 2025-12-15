@@ -27,7 +27,7 @@ import { Supporter } from '../../../types/types'; // Import the full interface
 interface SupporterCardProps {
   supporter: Supporter; // Use the full Supporter interface from types
   onEdit: (supporter: Supporter) => void;
-  onDelete: (supporterId: string) => void;
+  onDelete: (supporter: Supporter) => void;
   onView: (supporter: Supporter) => void;
   onQuickCall?: (supporter: Supporter) => void;
   onQuickEmail?: (supporter: Supporter) => void;
@@ -192,7 +192,7 @@ const getTypeStyle = () => {
               <Edit className="w-4 h-4" />
             </button>
             <button
-              onClick={() => onDelete(supporter.id)}
+              onClick={() => onDelete(supporter)}
               className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
               title="Delete Supporter"
             >

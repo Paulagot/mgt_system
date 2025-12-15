@@ -7,7 +7,7 @@ interface DashboardTabsProps {
 }
 
 // FIXED: Add 'prizes' to the tabs array
-const tabs = ['overview', 'campaigns', 'events', 'supporters', 'prizes', 'financials'];
+const tabs = ['overview', 'campaigns', 'events', 'supporters', 'prizes', 'prizefinder', 'financials'];
 
 const DashboardTabs: React.FC<DashboardTabsProps> = ({ activeTab, onTabChange }) => (
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

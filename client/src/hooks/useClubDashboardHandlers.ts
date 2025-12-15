@@ -153,22 +153,65 @@ export function useClubDashboardHandlers({
     return response;
   }, [updateCampaign, loadFinancialData]);
 
-  const handleDeleteSupporter = useCallback(async (supporterId: string) => {
-    const supporter = supporters.find(s => s.id === supporterId);
-    if (!supporter) return;
+const handleDeleteSupporter = useCallback(async (supporter: Supporter) => {
+  if (!supporter?.id) {
+    console.warn('[handleDeleteSupporter] Missing supporter.id', supporter);
+    return;
+  }
 
-    const confirmMessage = `Are you sure you want to delete "${supporter.name}"? This action cannot be undone.`;
-
-    if (window.confirm(confirmMessage)) {
-      try {
-        await supporterService.deleteSupporter(supporterId);
-        loadClubData();
-      } catch (err) {
-        console.error('Failed to delete supporter:', err);
-        alert('Failed to delete supporter. Please try again.');
-      }
+  try {
+    console.log('[handleDeleteSupporter] Attempting to delete', supporter.id);
+    await supporterService.deleteSupporter(supporter.id);
+    console.log('[handleDeleteSupporter] Delete successful, refreshing data');
+    loadClubData();
+  } catch (err: any) {
+    console.error('[handleDeleteSupporter] Failed to delete supporter:', err);
+    
+    // Check if the error indicates the supporter should be archived instead
+    if (err.canArchive || (err.message && err.message.includes('archive'))) {
+      // This error will be handled by the UI component to show archive option
+      throw err;
+    } else {
+      // Generic error
+      throw new Error('Failed to delete supporter. Please try again.');
     }
-  }, [supporters, loadClubData]);
+  }
+}, [loadClubData]);
+
+const handleArchiveSupporter = useCallback(async (supporter: Supporter) => {
+  if (!supporter?.id) {
+    console.warn('[handleArchiveSupporter] Missing supporter.id', supporter);
+    return;
+  }
+
+  try {
+    console.log('[handleArchiveSupporter] Archiving', supporter.id);
+    await supporterService.archiveSupporter(supporter.id);
+    console.log('[handleArchiveSupporter] Archive successful, refreshing data');
+    loadClubData();
+  } catch (err) {
+    console.error('[handleArchiveSupporter] Failed to archive supporter:', err);
+    throw new Error('Failed to archive supporter. Please try again.');
+  }
+}, [loadClubData]);
+
+const handleUnarchiveSupporter = useCallback(async (supporter: Supporter) => {
+  if (!supporter?.id) {
+    console.warn('[handleUnarchiveSupporter] Missing supporter.id', supporter);
+    return;
+  }
+
+  try {
+    console.log('[handleUnarchiveSupporter] Unarchiving', supporter.id);
+    await supporterService.unarchiveSupporter(supporter.id);
+    console.log('[handleUnarchiveSupporter] Unarchive successful, refreshing data');
+    loadClubData();
+  } catch (err) {
+    console.error('[handleUnarchiveSupporter] Failed to unarchive supporter:', err);
+    throw new Error('Failed to unarchive supporter. Please try again.');
+  }
+}, [loadClubData]);
+
 
   const handleCreateSupporter = useCallback(async (data: CreateSupporterData) => {
     const response = await supporterService.createSupporter(club.id, data);
@@ -203,6 +246,8 @@ export function useClubDashboardHandlers({
     handleCreateCampaign,
     handleUpdateCampaign,
     handleDeleteSupporter,
+    handleArchiveSupporter,
+    handleUnarchiveSupporter,
     handleCreateSupporter,
     handleUpdateSupporter,
     handleViewSupporter,

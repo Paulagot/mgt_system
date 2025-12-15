@@ -42,7 +42,7 @@ interface SupporterDetailPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onEdit?: (supporter: Supporter) => void;
-  onDelete?: (supporterId: string) => void;
+  onDelete?: (supporter: Supporter) => void;
    campaigns?: Campaign[]; // Add this
   events?: Event[];  
 }

@@ -71,14 +71,30 @@ router.get('/api/clubs/:clubId/supporters',
   async (req, res) => {
     try {
       const { clubId } = req.params;
-      const { type, search, relationship_strength, lifecycle_stage, priority_level, limit, offset } = req.query;
+      const { 
+        type, 
+        search, 
+        relationship_strength, 
+        lifecycle_stage, 
+        priority_level, 
+        limit, 
+        offset,
+        includeArchived // NEW: Add this parameter
+      } = req.query;
       
+      // Verify access
       if (clubId !== req.club_id) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      // Get supporters with filters
       const supporters = await supporterService.getSupportersByClub(clubId, {
-        type, search, relationship_strength, lifecycle_stage, priority_level
+        type, 
+        search, 
+        relationship_strength, 
+        lifecycle_stage, 
+        priority_level,
+        includeArchived // Pass this to the service
       });
 
       // Apply pagination if requested
@@ -92,7 +108,14 @@ router.get('/api/clubs/:clubId/supporters',
       res.json({
         supporters: paginatedSupporters,
         total: supporters.length,
-        filters_applied: { type, search, relationship_strength, lifecycle_stage, priority_level }
+        filters_applied: { 
+          type, 
+          search, 
+          relationship_strength, 
+          lifecycle_stage, 
+          priority_level,
+          includeArchived 
+        }
       });
     } catch (error) {
       console.error('Get supporters error:', error);
@@ -171,33 +194,107 @@ router.put('/api/supporters/:supporterId',
 );
 
 // Delete a supporter
-router.delete('/api/supporters/:supporterId',
+// DELETE /api/supporters/:id
+router.delete('/api/supporters/:id',
   authenticateToken,
   async (req, res) => {
     try {
-      const { supporterId } = req.params;
+      const supporterId = req.params.id;
+      const clubId = req.club_id; // ✅ Extract clubId from authenticated request
       
-      const deleted = await supporterService.deleteSupporter(supporterId, req.club_id);
-      
-      if (!deleted) {
+      // Verify the supporter belongs to the authenticated club
+      const supporter = await supporterService.getSupporterById(supporterId, clubId); // ✅ Pass clubId
+      if (!supporter) {
         return res.status(404).json({ error: 'Supporter not found' });
       }
-
-      const socketManager = getSocketManager(req);
-      if (socketManager && typeof socketManager.emitSupporterDeleted === 'function') {
-        socketManager.emitSupporterDeleted(req.club_id, supporterId);
+      if (supporter.club_id !== clubId) {
+        return res.status(403).json({ error: 'Access denied' });
       }
-
+      
+      // Check if supporter has related records
+      const hasRecords = await supporterService.hasRelatedRecords(supporterId);
+      
+      if (hasRecords) {
+        return res.status(400).json({
+          error: 'Cannot delete supporter with existing records. Please archive instead.',
+          canArchive: true
+        });
+      }
+      
+      // Proceed with delete if no dependencies - pass clubId
+      await supporterService.deleteSupporter(supporterId, clubId); // ✅ Pass clubId
+      
       res.json({ message: 'Supporter deleted successfully' });
     } catch (error) {
       console.error('Delete supporter error:', error);
-      if (error.message === 'Cannot delete supporter with associated communications, prizes, or tasks') {
-        return res.status(400).json({ error: error.message });
-      }
       res.status(500).json({ error: 'Failed to delete supporter' });
     }
   }
 );
+
+
+// PUT /api/supporters/:id/archive
+// Archive supporter
+router.put('/api/supporters/:id/archive',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const supporterId = req.params.id;
+      const clubId = req.club_id; // ✅ ADD THIS LINE
+      
+      // Verify the supporter belongs to the authenticated club
+      const supporter = await supporterService.getSupporterById(supporterId, clubId); // ✅ Add clubId
+      if (!supporter) {
+        return res.status(404).json({ error: 'Supporter not found' });
+      }
+      if (supporter.club_id !== clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const updatedSupporter = await supporterService.archiveSupporter(supporterId, clubId); // ✅ Add clubId
+      
+      res.json({ 
+        message: 'Supporter archived successfully',
+        supporter: updatedSupporter
+      });
+    } catch (error) {
+      console.error('Archive supporter error:', error);
+      res.status(500).json({ error: 'Failed to archive supporter' });
+    }
+  }
+);
+
+// Unarchive supporter
+router.put('/api/supporters/:id/unarchive',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const supporterId = req.params.id;
+      const clubId = req.club_id; // ✅ ADD THIS LINE
+      
+      // Verify the supporter belongs to the authenticated club
+      const supporter = await supporterService.getSupporterById(supporterId, clubId); // ✅ Add clubId
+      if (!supporter) {
+        return res.status(404).json({ error: 'Supporter not found' });
+      }
+      if (supporter.club_id !== clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const updatedSupporter = await supporterService.unarchiveSupporter(supporterId, clubId); // ✅ Add clubId
+      
+      res.json({ 
+        message: 'Supporter unarchived successfully',
+        supporter: updatedSupporter
+      });
+    } catch (error) {
+      console.error('Unarchive supporter error:', error);
+      res.status(500).json({ error: 'Failed to unarchive supporter' });
+    }
+  }
+);
+
+
 
 // ===== DONOR-FOCUSED ANALYTICS & REPORTING =====
 

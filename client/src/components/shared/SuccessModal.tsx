@@ -1,3 +1,4 @@
+// client/src/components/shared/SuccessModal.tsx
 import React from 'react';
 import { CheckCircle, X } from 'lucide-react';
 

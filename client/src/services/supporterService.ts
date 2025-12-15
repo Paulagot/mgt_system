@@ -88,12 +88,15 @@ class SupporterService extends BaseService {
   /**
    * Create a new supporter with full CRM data
    */
-  async createSupporter(clubId: string, supporterData: CreateSupporterData) {
-    return this.request<{ message: string; supporter: any }>(`/clubs/${clubId}/supporters`, {
+async createSupporter(clubId: string, supporterData: CreateSupporterData) {
+  return this.request<{ message: string; supporter: any; isDuplicate?: boolean }>(
+    `/clubs/${clubId}/supporters`,
+    {
       method: 'POST',
       body: JSON.stringify(supporterData),
-    });
-  }
+    }
+  );
+}
 
   /**
    * Get all supporters for a club with advanced filtering
@@ -137,6 +140,24 @@ class SupporterService extends BaseService {
   async deleteSupporter(supporterId: string) {
     return this.request<{ message: string }>(`/supporters/${supporterId}`, {
       method: 'DELETE',
+    });
+  }
+
+  /**
+   * Archive a supporter (when they have existing records)
+   */
+  async archiveSupporter(supporterId: string) {
+    return this.request<{ message: string; supporter: any }>(`/supporters/${supporterId}/archive`, {
+      method: 'PUT',
+    });
+  }
+
+  /**
+   * Unarchive a supporter
+   */
+  async unarchiveSupporter(supporterId: string) {
+    return this.request<{ message: string; supporter: any }>(`/supporters/${supporterId}/unarchive`, {
+      method: 'PUT',
     });
   }
 
