@@ -1,5 +1,5 @@
-// client/src/components/dashboard/ClubDashboard.tsx (UPDATED - add prizes tab)
-import React from 'react';
+// client/src/components/dashboard/ClubDashboard.tsx
+import React, { useEffect, useRef, useState } from 'react';
 import DashboardHeader from './DashboardHeader';
 import DashboardTabs from './DashboardTabs';
 import OverviewTab from './OverviewTab';
@@ -7,16 +7,31 @@ import CampaignsTab from './CampaignsTab';
 import EventsTab from './EventsTab';
 import SupportersTab from './SupportersTab';
 import FinancialsTab from './FinancialsTab';
-import PrizesTab from '../prizes/PrizesTab'; // NEW: Import PrizesTab
+import PrizesTab from '../prizes/PrizesTab';
 import CreateEventForm from '../events/CreateEventForm';
 import CreateCampaignForm from '../campaigns/CreateCampaignForm';
 import CreateSupporterForm from '../supporters/forms/CreateSupporterForm';
 import SupporterDetailPanel from '../supporters/panels/SupporterDetailPanel';
+import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
+import ConfirmArchiveModal from '../shared/ConfirmArchiveModal';
 import { useClubDashboard } from '../../hooks/useClubDashboard';
 import { useClubDashboardHandlers } from '../../hooks/useClubDashboardHandlers';
+import PrizeFinderTab from './PrizeFinderTab';
+import { Supporter } from '../../types/types';
 
 export default function ClubDashboard() {
   const dashboard = useClubDashboard();
+  const [showArchivedSupporters, setShowArchivedSupporters] = useState(false);
+  
+  // Delete modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [supporterToDelete, setSupporterToDelete] = useState<Supporter | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Archive modal state
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [supporterToArchive, setSupporterToArchive] = useState<Supporter | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   const handlers = useClubDashboardHandlers({
     club: dashboard.club!,
@@ -41,9 +56,75 @@ export default function ClubDashboard() {
     setShowSupporterDetailPanel: dashboard.setShowSupporterDetailPanel,
   });
 
+  // Wrapper for delete supporter that shows modal
+  const handleDeleteSupporterClick = (supporter: Supporter) => {
+    setSupporterToDelete(supporter);
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!supporterToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await handlers.handleDeleteSupporter(supporterToDelete);
+      setDeleteModalOpen(false);
+      setSupporterToDelete(null);
+    } catch (err: any) {
+      setIsDeleting(false);
+      setDeleteModalOpen(false);
+      
+      // If supporter has records, show archive modal instead
+      if (err.canArchive || (err.message && err.message.includes('archive'))) {
+        setSupporterToArchive(supporterToDelete);
+        setArchiveModalOpen(true);
+      } else {
+        alert(err.message || 'Failed to delete supporter. Please try again.');
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleConfirmArchive = async () => {
+    if (!supporterToArchive) return;
+    
+    setIsArchiving(true);
+    try {
+      await handlers.handleArchiveSupporter(supporterToArchive);
+      setArchiveModalOpen(false);
+      setSupporterToArchive(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to archive supporter. Please try again.');
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const handleUnarchiveSupporter = async (supporter: Supporter) => {
+    try {
+      await handlers.handleUnarchiveSupporter(supporter);
+    } catch (err: any) {
+      alert(err.message || 'Failed to unarchive supporter. Please try again.');
+    }
+  };
+
   const { user, club, isLoading, error, activeTab, setActiveTab } = dashboard;
 
-  if (isLoading) {
+  // ✅ Only show the full-page loader on the FIRST load.
+  const hasLoadedOnceRef = useRef(false);
+  useEffect(() => {
+    if (!isLoading && club) {
+      hasLoadedOnceRef.current = true;
+    }
+  }, [isLoading, club]);
+
+  
+  React.useEffect(() => {
+  console.log('[ClubDashboard] isLoading:', isLoading, 'club:', club?.id, 'activeTab:', activeTab);
+}, [isLoading, club?.id, activeTab]);
+
+  if (isLoading && !hasLoadedOnceRef.current) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -53,6 +134,8 @@ export default function ClubDashboard() {
       </div>
     );
   }
+
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -65,6 +148,16 @@ export default function ClubDashboard() {
 
       <DashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
+      {/* ✅ Optional: subtle "refreshing" banner instead of nuking the UI */}
+      {isLoading && hasLoadedOnceRef.current && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3">
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
+            Refreshing…
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
           <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
@@ -74,7 +167,6 @@ export default function ClubDashboard() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      
         {activeTab === 'overview' && (
           <OverviewTab
             metrics={{
@@ -90,13 +182,15 @@ export default function ClubDashboard() {
               totalDonors: dashboard.supporters.filter(s => s.type === 'donor').length,
               totalVolunteers: dashboard.supporters.filter(s => s.type === 'volunteer').length,
               totalSponsors: dashboard.supporters.filter(s => s.type === 'sponsor').length,
-              avgDonation: dashboard.supporters.filter(s => s.type === 'donor' && s.average_donation)
-                .reduce((sum, s) => sum + (s.average_donation || 0), 0) / 
+              avgDonation:
+                dashboard.supporters
+                  .filter(s => s.type === 'donor' && s.average_donation)
+                  .reduce((sum, s) => sum + (s.average_donation || 0), 0) /
                 Math.max(dashboard.supporters.filter(s => s.type === 'donor' && s.average_donation).length, 1),
               donorRetentionRate: 85,
               totalUsers: 0,
-              totalPrizes: 0, // TODO: Load from prizes when implemented
-              totalPrizeValue: 0, // TODO: Load from prizes when implemented
+              totalPrizes: 0,
+              totalPrizeValue: 0,
               totalTasks: 0,
               overdueTasks: 0,
               completedTasks: 0,
@@ -112,7 +206,7 @@ export default function ClubDashboard() {
               recent_supporters: dashboard.supporters
                 .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                 .slice(0, 5),
-              pending_follow_ups: dashboard.supporters.filter(s => 
+              pending_follow_ups: dashboard.supporters.filter(s =>
                 s.next_contact_date && new Date(s.next_contact_date) <= new Date()
               ).length,
             }}
@@ -152,7 +246,7 @@ export default function ClubDashboard() {
             onEditEvent={handlers.handleEditEvent}
             onDeleteEvent={handlers.handleDeleteEvent}
             onViewEvent={() => {}}
-             getPrizeDataForEvent={dashboard.getPrizeDataForEvent}
+            getPrizeDataForEvent={dashboard.getPrizeDataForEvent}
           />
         )}
 
@@ -161,17 +255,23 @@ export default function ClubDashboard() {
             supporters={dashboard.supporters}
             onCreateSupporter={() => dashboard.setShowCreateSupporterForm(true)}
             onEditSupporter={handlers.handleEditSupporter}
-            onDeleteSupporter={handlers.handleDeleteSupporter}
+            onDeleteSupporter={showArchivedSupporters ? handleUnarchiveSupporter : handleDeleteSupporterClick}
             onViewSupporter={handlers.handleViewSupporter}
             onQuickCall={(s) => alert(`Calling ${s.name}`)}
             onQuickEmail={(s) => window.open(`mailto:${s.email}`)}
+            showArchived={showArchivedSupporters}
+            onToggleArchived={() => setShowArchivedSupporters(!showArchivedSupporters)}
           />
         )}
 
-        {/* NEW: Prizes Tab */}
-        {activeTab === 'prizes' && (
-          <PrizesTab
-            events={dashboard.events}
+        {activeTab === 'prizes' && <PrizesTab events={dashboard.events} />}
+
+        {activeTab === 'prizefinder' && club && (
+          <PrizeFinderTab
+            clubId={club.id}
+            clubName={club.name}
+            // ✅ still refreshes supporters, but no longer destroys PrizeFinderTab state
+            onSupporterCreated={() => dashboard.loadClubData()}
           />
         )}
 
@@ -180,6 +280,7 @@ export default function ClubDashboard() {
         )}
       </div>
 
+      {/* modals unchanged... */}
       {dashboard.showCreateEventForm && (
         <CreateEventForm
           onSubmit={handlers.handleCreateEvent}
@@ -239,21 +340,48 @@ export default function ClubDashboard() {
         />
       )}
 
-    {dashboard.showSupporterDetailPanel && dashboard.selectedSupporter && (
-  <SupporterDetailPanel
-    supporter={dashboard.selectedSupporter}
-    isOpen={dashboard.showSupporterDetailPanel}
-    onClose={() => {
-      dashboard.setShowSupporterDetailPanel(false);
-      dashboard.setSelectedSupporter(null);
-    }}
-    onEdit={handlers.handleEditSupporter}           // Add this
-    onDelete={handlers.handleDeleteSupporter}       // Add this  
-    campaigns={dashboard.campaigns}                  // Add this
-    events={dashboard.events}                        // Add this
-  />
-)}
+      {dashboard.showSupporterDetailPanel && dashboard.selectedSupporter && (
+        <SupporterDetailPanel
+          supporter={dashboard.selectedSupporter}
+          isOpen={dashboard.showSupporterDetailPanel}
+          onClose={() => {
+            dashboard.setShowSupporterDetailPanel(false);
+            dashboard.setSelectedSupporter(null);
+          }}
+          onEdit={handlers.handleEditSupporter}
+          onDelete={handleDeleteSupporterClick}
+          campaigns={dashboard.campaigns}
+          events={dashboard.events}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={deleteModalOpen}
+        title="Delete Supporter"
+        message="Are you sure you want to delete this supporter?"
+        itemName={supporterToDelete?.name || ''}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setDeleteModalOpen(false);
+          setSupporterToDelete(null);
+        }}
+        isDeleting={isDeleting}
+      />
+
+      {/* Archive Confirmation Modal */}
+      <ConfirmArchiveModal
+        isOpen={archiveModalOpen}
+        itemName={supporterToArchive?.name || ''}
+        onConfirm={handleConfirmArchive}
+        onCancel={() => {
+          setArchiveModalOpen(false);
+          setSupporterToArchive(null);
+        }}
+        isArchiving={isArchiving}
+      />
     </div>
   );
 }
+
 

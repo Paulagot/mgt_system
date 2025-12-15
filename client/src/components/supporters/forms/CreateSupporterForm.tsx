@@ -106,13 +106,19 @@ const CreateSupporterForm: React.FC<CreateSupporterFormProps> = ({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdSupporterName, setCreatedSupporterName] = useState('');
   const [activeTab, setActiveTab] = useState<'basic' | 'contact' | 'relationship' | 'preferences'>('basic');
+  const [tagsInput, setTagsInput] = useState('');
+const [interestsInput, setInterestsInput] = useState('');
+const [skillsInput, setSkillsInput] = useState('');
 
   // Update form data when existingSupporter changes (for edit mode)
   useEffect(() => {
-    if (editMode && existingSupporter) {
-      setFormData(getInitialFormData());
-    }
-  }, [editMode, existingSupporter]);
+  if (editMode && existingSupporter) {
+    setFormData(getInitialFormData());
+    setTagsInput(existingSupporter.tags?.join(', ') || '');
+    setInterestsInput(existingSupporter.interests?.join(', ') || '');
+    setSkillsInput(existingSupporter.skills?.join(', ') || '');
+  }
+}, [editMode, existingSupporter]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -210,7 +216,10 @@ const CreateSupporterForm: React.FC<CreateSupporterFormProps> = ({
         state_province: formData.state_province?.trim() || '',
         postal_code: formData.postal_code?.trim() || '',
         referral_source: formData.referral_source?.trim() || '',
-        data_protection_notes: formData.data_protection_notes?.trim() || ''
+        data_protection_notes: formData.data_protection_notes?.trim() || '',
+         tags: tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0),
+  interests: interestsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0),
+  skills: skillsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0),
       };
 
       console.log('🔄 Cleaned form data:', cleanedData);
@@ -413,46 +422,47 @@ const CreateSupporterForm: React.FC<CreateSupporterFormProps> = ({
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Tags
                       </label>
-                      <input
-                        type="text"
-                        value={formData.tags?.join(', ') || ''}
-                        onChange={(e) => handleTagInput('tags', e.target.value)}
-                        disabled={isSubmitting}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="VIP, Local Business, etc."
-                      />
+                 <input
+  type="text"
+  value={tagsInput}
+  onChange={(e) => setTagsInput(e.target.value)}
+  disabled={isSubmitting}
+  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+  placeholder="VIP, Local Business, etc."
+/>
+
                       <p className="text-xs text-gray-500 mt-1">Separate with commas</p>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Interests
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.interests?.join(', ') || ''}
-                        onChange={(e) => handleTagInput('interests', e.target.value)}
-                        disabled={isSubmitting}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Sports, Music, Community"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Separate with commas</p>
-                    </div>
+                  <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Interests
+  </label>
+  <input
+    type="text"
+    value={interestsInput}
+    onChange={(e) => setInterestsInput(e.target.value)}
+    disabled={isSubmitting}
+    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+    placeholder="Sports, Music, Community"
+  />
+  <p className="text-xs text-gray-500 mt-1">Separate with commas</p>
+</div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Skills
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.skills?.join(', ') || ''}
-                        onChange={(e) => handleTagInput('skills', e.target.value)}
-                        disabled={isSubmitting}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Event Planning, Marketing"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Separate with commas</p>
-                    </div>
+                 <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Skills
+  </label>
+  <input
+    type="text"
+    value={skillsInput}
+    onChange={(e) => setSkillsInput(e.target.value)}
+    disabled={isSubmitting}
+    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+    placeholder="Event Planning, Marketing"
+  />
+  <p className="text-xs text-gray-500 mt-1">Separate with commas</p>
+</div>
                   </div>
                 </div>
               )}

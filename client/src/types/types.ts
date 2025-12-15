@@ -120,6 +120,7 @@ export interface Supporter {
   last_contact_date?: string;
   last_updated?: string;
   created_at: string;
+  is_archived: boolean;
 }
 
 export interface CreateSupporterData {
