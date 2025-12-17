@@ -1,3 +1,4 @@
+// server/src/middleware/auth.js
 import jwt from 'jsonwebtoken';
 import config from '../config/environment.js';
 import database from '../config/database.js';

@@ -1,105 +1,93 @@
-// client/src/services/apiService.ts
 const API_BASE_URL = import.meta.env.PROD
   ? "/api"
   : "http://localhost:3001/api";
 
+export type AuthUser = {
+  id: string;
+  club_id: string;
+  name: string;
+  email: string;
+  role: string;
+};
+
+export type AuthClub = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export type AuthResponse = {
+  message: string;
+  token: string;
+  user: AuthUser;
+  club: AuthClub;
+};
+
 class ApiService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem("auth_token");
     return {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` })
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
     };
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
-    
+
     const config: RequestInit = {
       headers: this.getAuthHeaders(),
       ...options,
     };
 
-    console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`);
-    console.log('🔑 Headers:', config.headers);
-    if (options.body) {
-      console.log('📦 Body:', options.body);
+    console.log(`🌐 API Request: ${options.method || "GET"} ${url}`);
+    console.log("🔑 Headers:", config.headers);
+    if (options.body) console.log("📦 Body:", options.body);
+
+    const response = await fetch(url, config);
+
+    console.log(`📡 Response Status: ${response.status} ${response.statusText}`);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("❌ API Error Response:", errorData);
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
 
-    try {
-      const response = await fetch(url, config);
-      
-      console.log(`📡 Response Status: ${response.status} ${response.statusText}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ API Error Response:', errorData);
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('✅ API Response Data:', data);
-      return data;
-    } catch (error) {
-      console.error(`💥 API Error (${endpoint}):`, error);
-      throw error;
-    }
+    const data = await response.json();
+    console.log("✅ API Response Data:", data);
+    return data as T;
   }
 
   // 🔐 AUTHENTICATION ENDPOINTS
+
   async registerClub(clubData: {
     name: string;
     email: string;
     password: string;
-  }) {
-    return this.request<{
-      message: string;
-      token: string;
-      user: {
-        id: string;
-        club_id: string;
-        name: string;
-        email: string;
-        role: string;
-      };
-      club: {
-        id: string;
-        name: string;
-        email: string;
-      };
-    }>('/clubs/register', {
-      method: 'POST',
+    gdprConsent: boolean;
+    privacyPolicyAccepted: boolean;
+    marketingConsent?: boolean;
+  }): Promise<AuthResponse> {
+    return this.request<AuthResponse>("/clubs/register", {
+      method: "POST",
       body: JSON.stringify(clubData),
     });
   }
 
-  async loginClub(credentials: { email: string; password: string }) {
-    return this.request<{
-      message: string;
-      token: string;
-      user: {
-        id: string;
-        club_id: string;
-        name: string;
-        email: string;
-        role: string;
-      };
-      club: {
-        id: string;
-        name: string;
-        email: string;
-      };
-    }>('/clubs/login', {
-      method: 'POST',
+  async loginClub(credentials: {
+    club: string;
+    email: string;
+    password: string;
+  }): Promise<AuthResponse> {
+    return this.request<AuthResponse>("/clubs/login", {
+      method: "POST",
       body: JSON.stringify(credentials),
     });
   }
 
   async getCurrentUser() {
-    return this.request<{
-      user: any;
-      club: any;
-    }>('/clubs/me');
+    return this.request<{ user: any; club: any }>("/clubs/me");
   }
 
   // 🎯 CAMPAIGN ENDPOINTS

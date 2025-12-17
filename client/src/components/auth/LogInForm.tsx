@@ -1,7 +1,7 @@
 // client/src/components/auth/LoginForm.tsx
-import React, { useState } from 'react';
-import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
-import { useAuth, useUI } from '../../store/app_store';
+import React, { useState } from "react";
+import { Eye, EyeOff, LogIn, AlertCircle, Building2 } from "lucide-react";
+import { useAuth, useUI } from "../../store/app_store";
 
 interface LoginFormProps {
   onSwitchToRegister?: () => void;
@@ -9,8 +9,9 @@ interface LoginFormProps {
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    club: "",
+    email: "",
+    password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -19,25 +20,21 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.email || !formData.password) {
-      return;
-    }
+
+    if (!formData.club || !formData.email || !formData.password) return;
 
     try {
-      await login(formData.email, formData.password);
-      // Success handled by store - will redirect to dashboard
-    } catch (err: any) {
-      // Error is already set in store by login function
-      console.error('Login failed:', err);
+      await login(formData.club.trim(), formData.email.trim(), formData.password);
+    } catch (err) {
+      console.error("Login failed:", err);
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
     if (error) clearError();
   };
 
@@ -57,6 +54,28 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* ✅ Club */}
+          <div>
+            <label htmlFor="club" className="block text-sm font-medium text-gray-700 mb-2">
+              Club Name (or ID)
+            </label>
+            <div className="relative">
+              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                id="club"
+                name="club"
+                value={formData.club}
+                onChange={handleChange}
+                required
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                placeholder="Enter your club name"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          {/* Email */}
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
               Email Address
@@ -74,13 +93,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
             />
           </div>
 
+          {/* Password */}
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
               Password
             </label>
             <div className="relative">
               <input
-                type={showPassword ? 'text' : 'password'}
+                type={showPassword ? "text" : "password"}
                 id="password"
                 name="password"
                 value={formData.password}
@@ -102,7 +122,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
           <button
             type="submit"
-            disabled={isLoading || !formData.email || !formData.password}
+            disabled={isLoading || !formData.club || !formData.email || !formData.password}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             {isLoading ? (
@@ -121,25 +141,23 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
         <div className="mt-8 text-center">
           <p className="text-gray-600">
-            Don't have an account?{' '}
-            <button
-              onClick={onSwitchToRegister}
-              className="text-blue-600 hover:text-blue-700 font-semibold"
-            >
+            Don't have an account?{" "}
+            <button onClick={onSwitchToRegister} className="text-blue-600 hover:text-blue-700 font-semibold">
               Register your club
             </button>
           </p>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-gray-200">
+        {/* <div className="mt-6 pt-6 border-t border-gray-200">
           <div className="text-center">
             <h3 className="text-sm font-medium text-gray-900 mb-3">Test Account</h3>
             <div className="text-xs text-gray-600 space-y-1">
+              <p>Club: Test Club</p>
               <p>Email: test@example.com</p>
               <p>Password: password123</p>
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );
