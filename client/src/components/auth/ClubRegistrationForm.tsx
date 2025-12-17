@@ -263,7 +263,7 @@ export default function ClubRegisterForm({ onSwitchToLogin }: ClubRegisterFormPr
         gdprConsent,
         privacyPolicyAccepted,
         marketingConsent
-      } as any);
+      } );
 
       if ((result as any)?.success) {
         setLocalSuccess((result as any)?.message ?? 'Account created! You can sign in now.');

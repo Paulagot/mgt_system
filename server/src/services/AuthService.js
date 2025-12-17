@@ -10,16 +10,17 @@ const CONSENT_VERSION = process.env.CONSENT_VERSION || '1.0';
 export class AuthService {
   /**
    * Register new club with GDPR compliance + seed FREE plan
+   * ✅ Password is stored on USERS (host), not clubs.
    */
   async register(req, res) {
     try {
-      const { 
-        name, 
-        email, 
-        password, 
-        gdprConsent, 
-        privacyPolicyAccepted, 
-        marketingConsent = false 
+      const {
+        name,
+        email,
+        password,
+        gdprConsent,
+        privacyPolicyAccepted,
+        marketingConsent = false
       } = req.body;
 
       const prefix = config.DB_TABLE_PREFIX;
@@ -28,12 +29,12 @@ export class AuthService {
         return res.status(400).json({ error: 'Name, email, and password are required' });
       }
       if (!gdprConsent || !privacyPolicyAccepted) {
-        return res.status(400).json({ 
-          error: 'GDPR consent and privacy policy acceptance are required' 
+        return res.status(400).json({
+          error: 'GDPR consent and privacy policy acceptance are required'
         });
       }
 
-      // Pre-check (pool)
+      // Pre-check: club email still unique (contact email)
       const [existing] = await database.execute(
         `SELECT id FROM ${prefix}clubs WHERE email = ?`,
         [email]
@@ -55,23 +56,33 @@ export class AuthService {
       try {
         await conn.beginTransaction();
 
-        // Clubs
+        // ✅ Clubs (no password_hash)
         await conn.execute(
-          `INSERT INTO ${prefix}clubs (id, name, email, password_hash) VALUES (?, ?, ?, ?)`,
-          [clubId, name, email, hashedPassword]
+          `INSERT INTO ${prefix}clubs (id, name, email) VALUES (?, ?, ?)`,
+          [clubId, name, email]
         );
 
-        // Users (NOTE: no consent_version in users table)
+        // ✅ Users: store password_hash here (host)
         await conn.execute(
           `INSERT INTO ${prefix}users (
-            id, club_id, name, email, role,
+            id, club_id, name, email, password_hash, password_updated_at, role,
             gdpr_consent, privacy_policy_accepted, marketing_consent,
             consent_date, consent_ip, consent_user_agent
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            userId, clubId, name, email, 'host',
-            gdprConsent, privacyPolicyAccepted, marketingConsent,
-            consentDate, clientIp, userAgent
+            userId,
+            clubId,
+            name,
+            email,
+            hashedPassword,
+            consentDate,
+            'host',
+            gdprConsent ? 1 : 0,
+            privacyPolicyAccepted ? 1 : 0,
+            marketingConsent ? 1 : 0,
+            consentDate,
+            clientIp,
+            userAgent
           ]
         );
 
@@ -83,7 +94,9 @@ export class AuthService {
             ['FREE']
           );
           if (planRow?.id) freePlanId = planRow.id;
-        } catch { /* plans table may not exist yet */ }
+        } catch {
+          // plans table may not exist yet
+        }
 
         const DEFAULT_FREE_CREDITS = 3;
         await conn.execute(
@@ -98,17 +111,24 @@ export class AuthService {
           { type: 'privacy_policy', given: privacyPolicyAccepted },
           { type: 'marketing', given: marketingConsent }
         ];
+
         for (const c of consentTypes) {
           if (c.given) {
             try {
               await conn.execute(
                 `INSERT INTO ${prefix}consent_log (
-                  id, user_id, consent_type, consent_given, 
+                  id, user_id, consent_type, consent_given,
                   consent_date, ip_address, user_agent, consent_version
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                  uuidv4(), userId, c.type, c.given ? 1 : 0,
-                  consentDate, clientIp, userAgent, CONSENT_VERSION
+                  uuidv4(),
+                  userId,
+                  c.type,
+                  c.given ? 1 : 0,
+                  consentDate,
+                  clientIp,
+                  userAgent,
+                  CONSENT_VERSION
                 ]
               );
             } catch {
@@ -120,6 +140,7 @@ export class AuthService {
         await conn.commit();
 
         const token = jwt.sign({ userId, clubId }, config.JWT_SECRET, { expiresIn: '7d' });
+
         return res.status(201).json({
           message: 'Club registered successfully',
           token,
@@ -139,56 +160,87 @@ export class AuthService {
   }
 
   /**
-   * Login club (unchanged)
+   * ✅ Login now requires: club + email + password
+   * - "club" can be a clubId (UUID) OR a club name (exact match)
+   * - Password is checked against users.password_hash
    */
   async login(req, res) {
     try {
-      const { email, password } = req.body;
+      const { club, email, password } = req.body;
       const prefix = config.DB_TABLE_PREFIX;
-      
-      if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required' });
+
+      if (!club || !email || !password) {
+        return res.status(400).json({ error: 'Club, email, and password are required' });
       }
 
-      const [rows] = await database.connection.execute(`
-        SELECT c.id as club_id, c.name as club_name, c.email as club_email, c.password_hash,
-               u.id as user_id, u.name as user_name, u.email as user_email, u.role
-        FROM ${prefix}clubs c 
-        JOIN ${prefix}users u ON c.id = u.club_id 
-        WHERE c.email = ? AND u.role = 'host'
-      `, [email]);
+      // If club looks like a UUID, allow id match as well
+      const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(club);
+
+      const [rows] = await database.execute(
+        `
+        SELECT
+          u.id as user_id,
+          u.club_id,
+          u.name as user_name,
+          u.email as user_email,
+          u.role,
+          u.password_hash,
+          c.name as club_name,
+          c.email as club_email
+        FROM ${prefix}users u
+        JOIN ${prefix}clubs c ON c.id = u.club_id
+        WHERE u.email = ?
+          AND (
+            ${looksLikeUuid ? 'c.id = ? OR' : ''}
+            c.name = ?
+          )
+        LIMIT 1
+        `,
+        looksLikeUuid ? [email, club, club] : [email, club]
+      );
 
       if (!Array.isArray(rows) || rows.length === 0) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
       const data = rows[0];
+
+      if (!data.password_hash) {
+        return res.status(401).json({
+          error: 'This user does not have a password set yet'
+        });
+      }
+
       const isValidPassword = await bcrypt.compare(password, data.password_hash);
       if (!isValidPassword) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({ userId: data.user_id, clubId: data.club_id }, config.JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign(
+        { userId: data.user_id, clubId: data.club_id },
+        config.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
 
-      res.json({
+      return res.json({
         message: 'Login successful',
         token,
-        user: { 
-          id: data.user_id, 
-          club_id: data.club_id, 
-          name: data.user_name, 
-          email: data.user_email, 
-          role: data.role 
+        user: {
+          id: data.user_id,
+          club_id: data.club_id,
+          name: data.user_name,
+          email: data.user_email,
+          role: data.role
         },
-        club: { 
-          id: data.club_id, 
-          name: data.club_name, 
-          email: data.club_email 
+        club: {
+          id: data.club_id,
+          name: data.club_name,
+          email: data.club_email
         }
       });
     } catch (error) {
       console.error('❌ Login error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
@@ -198,27 +250,28 @@ export class AuthService {
   async getProfile(req, res) {
     try {
       const prefix = config.DB_TABLE_PREFIX;
-      const [clubRows] = await database.connection.execute(
-        `SELECT id, name, email FROM ${prefix}clubs WHERE id = ?`, 
+
+      const [clubRows] = await database.execute(
+        `SELECT id, name, email FROM ${prefix}clubs WHERE id = ?`,
         [req.club_id]
       );
-      
+
       if (!Array.isArray(clubRows) || clubRows.length === 0) {
         return res.status(404).json({ error: 'Club not found' });
       }
 
-      res.json({
+      return res.json({
         user: req.user,
         club: clubRows[0]
       });
     } catch (error) {
       console.error('❌ Get user error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
   /**
-   * Update consent preferences (keeps consent_version in consent_log)
+   * Update consent preferences (unchanged)
    */
   async updateConsent(req, res) {
     try {
@@ -226,14 +279,13 @@ export class AuthService {
       const userId = req.user.id;
       const prefix = config.DB_TABLE_PREFIX;
 
-      const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+      const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
       const userAgent = req.get('User-Agent') || 'unknown';
       const consentDate = new Date();
 
-      // Update flag on users
-      await database.connection.execute(
-        `UPDATE ${prefix}users SET 
-          marketing_consent = ?, 
+      await database.execute(
+        `UPDATE ${prefix}users SET
+          marketing_consent = ?,
           consent_date = ?,
           consent_ip = ?,
           consent_user_agent = ?
@@ -241,28 +293,33 @@ export class AuthService {
         [marketingConsent ? 1 : 0, consentDate, clientIp, userAgent, userId]
       );
 
-      // Audit log with consent_version
-      await database.connection.execute(
+      await database.execute(
         `INSERT INTO ${prefix}consent_log (
-          id, user_id, consent_type, consent_given, 
+          id, user_id, consent_type, consent_given,
           consent_date, ip_address, user_agent, consent_version
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          uuidv4(), userId, 'marketing', marketingConsent ? 1 : 0,
-          consentDate, clientIp, userAgent, CONSENT_VERSION
+          uuidv4(),
+          userId,
+          'marketing',
+          marketingConsent ? 1 : 0,
+          consentDate,
+          clientIp,
+          userAgent,
+          CONSENT_VERSION
         ]
       ).catch(() => { /* ignore if table absent */ });
 
-      res.json({
+      return res.json({
         message: 'Consent preferences updated successfully',
         marketingConsent
       });
-
     } catch (error) {
       console.error('❌ Update consent error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 }
 
 export default AuthService;
+

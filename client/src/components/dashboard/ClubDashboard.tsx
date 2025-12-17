@@ -18,6 +18,9 @@ import { useClubDashboard } from '../../hooks/useClubDashboard';
 import { useClubDashboardHandlers } from '../../hooks/useClubDashboardHandlers';
 import PrizeFinderTab from './PrizeFinderTab';
 import { Supporter } from '../../types/types';
+import EventExpenseManager from '../events/EventExpenseManager';
+import TaskManagement from '../users/TaskManagement';
+
 
 export default function ClubDashboard() {
   const dashboard = useClubDashboard();
@@ -139,12 +142,17 @@ export default function ClubDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <DashboardHeader
-        clubName={club?.name}
-        userName={user?.name}
-        onNewEvent={() => dashboard.setShowCreateEventForm(true)}
-        onNewCampaign={() => dashboard.setShowCreateCampaignForm(true)}
-      />
+ <DashboardHeader
+  clubName={club?.name}
+  userName={user?.name}
+  onNewEvent={() => dashboard.setShowCreateEventForm(true)}
+  onNewCampaign={() => dashboard.setShowCreateCampaignForm(true)}
+  onNewSupporter={() => dashboard.setShowCreateSupporterForm(true)}
+  onNewPrize={() => setActiveTab('prizes')}
+  onNewExpense={() => setActiveTab('expenses')}
+  onNewIncome={() => setActiveTab('income')}
+  onQuickTask={() => setActiveTab('tasks')}
+/>
 
       <DashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -263,6 +271,45 @@ export default function ClubDashboard() {
             onToggleArchived={() => setShowArchivedSupporters(!showArchivedSupporters)}
           />
         )}
+
+        {activeTab === 'income' && (
+  <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <h2 className="text-lg font-semibold text-gray-900">Income Manager</h2>
+    <p className="mt-2 text-gray-600">
+      Coming soon. This will track income entries (tickets, donations, sponsorship, grants, etc.).
+    </p>
+  </div>
+)}
+
+{activeTab === 'expenses' && (
+  <div>
+    <h2 className="text-xl font-bold text-gray-900 mb-4">Expense Manager</h2>
+    <p className="text-sm text-gray-600 mb-6">
+      (Temporary) Currently using the event-based expense manager component. We’ll wire this to real club/event data next.
+    </p>
+
+    {/* NOTE: your EventExpenseManager currently expects eventId/eventTitle/expenses handlers.
+       We can either:
+       1) keep using your existing mock for now (fast), or
+       2) refactor EventExpenseManager into a real ExpensesTab fed by API (next step).
+    */}
+    <EventExpenseManager
+      eventId="demo-event-1"
+      eventTitle="Demo Event"
+      expenses={[]}
+      onAddExpense={async () => alert('Hook up API next')}
+      onUpdateExpense={async () => alert('Hook up API next')}
+      onDeleteExpense={async () => alert('Hook up API next')}
+    />
+  </div>
+)}
+
+{activeTab === 'tasks' && (
+  <div>
+    <TaskManagement />
+  </div>
+)}
+
 
         {activeTab === 'prizes' && <PrizesTab events={dashboard.events} />}
 
