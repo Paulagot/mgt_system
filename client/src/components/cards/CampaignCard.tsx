@@ -1,4 +1,4 @@
-// client/src/components/cards/CampaignCard.tsx
+// client/src/components/cards/CampaignCard.tsx (UPDATED WITH PUBLISH)
 import React from 'react';
 import { 
   Target, 
@@ -13,15 +13,17 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  BarChart3
+  BarChart3,
+  FileText // For draft badge
 } from 'lucide-react';
 import { Campaign } from '../../types/types';
 
 interface CampaignCardProps {
-  campaign: Campaign; // Now Campaign interface includes all the enhanced fields
+  campaign: Campaign;
   onEdit: (campaign: Campaign) => void;
   onDelete: (campaignId: string) => void;
   onView: (campaign: Campaign) => void;
+  onPublish?: (campaignId: string) => void; // NEW: Publish handler
   className?: string;
 }
 
@@ -30,6 +32,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   onEdit, 
   onDelete, 
   onView,
+  onPublish, // NEW
   className = ""
 }) => {
   // Format currency
@@ -43,6 +46,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       year: 'numeric'
     });
   };
+
+  // NEW: Check if campaign is published
+  const isPublished = campaign.is_published !== false; // Default to true for backward compatibility
 
   // Determine campaign status based on dates
   const getCampaignStatus = () => {
@@ -153,6 +159,21 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
               }`}>
                 {campaignStatus.label}
               </span>
+              
+              {/* NEW: Draft/Published Badge */}
+              {!isPublished && (
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200 flex items-center gap-1">
+                  <FileText className="w-3 h-3" />
+                  Draft
+                </span>
+              )}
+              {isPublished && (
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800 border border-green-200 flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" />
+                  Published
+                </span>
+              )}
+              
               {timeRemaining && (
                 <span className="text-xs font-medium px-2 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-200">
                   {timeRemaining}
@@ -170,6 +191,18 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             >
               <Eye className="w-4 h-4" />
             </button>
+            
+            {/* NEW: Show Publish button only for drafts */}
+            {!isPublished && onPublish && (
+              <button
+                onClick={() => onPublish(campaign.id)}
+                className="p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
+                title="Publish Campaign"
+              >
+                <CheckCircle className="w-4 h-4" />
+              </button>
+            )}
+            
             <button
               onClick={() => onEdit(campaign)}
               className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded transition-colors"
@@ -264,7 +297,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           </div>
         </div>
 
-            {campaign.tags && Array.isArray(campaign.tags) && campaign.tags.length > 0 && (
+        {campaign.tags && Array.isArray(campaign.tags) && campaign.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             <Tag className="w-3 h-3 text-gray-400 mt-0.5 mr-1" />
             {campaign.tags.slice(0, 3).map((tag: string, index: number) => (

@@ -110,6 +110,56 @@ router.get('/api/clubs/:clubId/expenses',
   }
 );
 
+// ===== CAMPAIGN-LEVEL EXPENSE ROUTES =====
+
+// Create expense for a specific campaign
+router.post('/api/campaigns/:campaignId/expenses',
+  authenticateToken,
+  validateRequired(['category', 'description', 'amount', 'date']),
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const expenseData = { ...req.body, campaign_id: campaignId };
+
+      const expense = await financialService.createExpense(
+        req.club_id,
+        expenseData,
+        req.user.id
+      );
+
+      const socketManager = getSocketManager(req);
+      socketManager.emitExpenseCreated(req.club_id, expense);
+
+      res.status(201).json(expense);
+    } catch (error) {
+      console.error('Create campaign expense error:', error);
+      if (error.message === 'Campaign not found' || error.message === 'Access denied') {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Get all expenses for a specific campaign
+router.get('/api/campaigns/:campaignId/expenses',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      
+      const expenses = await financialService.getExpensesByCampaign(campaignId, req.club_id);
+      res.json(expenses);
+    } catch (error) {
+      console.error('Get campaign expenses error:', error);
+      if (error.message === 'Campaign not found' || error.message === 'Access denied') {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 // ===== INDIVIDUAL EXPENSE MANAGEMENT =====
 
 // Update an expense

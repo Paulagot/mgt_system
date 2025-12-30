@@ -1,3 +1,4 @@
+// server/src/services/CampaignService.js
 import database from '../config/database.js';
 import config from '../config/environment.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,60 +8,83 @@ class CampaignService {
     this.prefix = config.DB_TABLE_PREFIX;
   }
 
+  // ---- helpers ----
+  _safeJsonParseArray(value, fallback = []) {
+    if (!value) return fallback;
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  _normalizeStringArray(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean);
+  }
+
+  _hydrateCampaignRow(row) {
+    if (!row) return row;
+
+    // tags: stored as JSON string or JSON
+    row.tags = this._safeJsonParseArray(row.tags, []);
+
+    // impact_area_ids: stored as JSON string or JSON
+    row.impact_area_ids = this._safeJsonParseArray(row.impact_area_ids, []);
+
+    return row;
+  }
+
   async createCampaign(clubId, campaignData) {
-    const { 
-      name, 
-      description, 
+    const {
+      name,
+      description,
       target_amount,
       category,
       start_date,
       end_date,
-      tags 
+      tags,
+      impact_area_ids, // ✅ NEW
     } = campaignData;
-    
+
     const campaignId = uuidv4();
-    
-    // Convert tags array to JSON string for storage
-    const tagsJson = tags && Array.isArray(tags) ? JSON.stringify(tags) : null;
-    
-    const [result] = await database.connection.execute(
+
+    const tagsJson = tags && Array.isArray(tags) ? JSON.stringify(this._normalizeStringArray(tags)) : null;
+
+    const impactAreasJson =
+      impact_area_ids && Array.isArray(impact_area_ids)
+        ? JSON.stringify(this._normalizeStringArray(impact_area_ids))
+        : null;
+
+    await database.connection.execute(
       `INSERT INTO ${this.prefix}campaigns (
-        id, club_id, name, description, target_amount, 
-        category, start_date, end_date, tags
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, club_id, name, description, target_amount,
+        category, start_date, end_date, tags, impact_area_ids
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        campaignId, 
-        clubId, 
-        name, 
-        description, 
+        campaignId,
+        clubId,
+        name,
+        description,
         target_amount,
         category || null,
         start_date || null,
         end_date || null,
-        tagsJson
+        tagsJson,
+        impactAreasJson,
       ]
     );
 
-    // Get the created campaign
     const [rows] = await database.connection.execute(
       `SELECT * FROM ${this.prefix}campaigns WHERE id = ?`,
       [campaignId]
     );
 
     const campaign = Array.isArray(rows) ? rows[0] : null;
-    
-    // Parse tags back to array for response
-    if (campaign && campaign.tags) {
-      try {
-        campaign.tags = JSON.parse(campaign.tags);
-      } catch (e) {
-        campaign.tags = [];
-      }
-    } else if (campaign) {
-      campaign.tags = [];
-    }
-
-    return campaign;
+    return this._hydrateCampaignRow(campaign);
   }
 
   async getCampaignsByClub(clubId) {
@@ -69,21 +93,7 @@ class CampaignService {
       [clubId]
     );
 
-    // Parse tags for each campaign
-    const campaigns = (rows || []).map(campaign => {
-      if (campaign.tags) {
-        try {
-          campaign.tags = JSON.parse(campaign.tags);
-        } catch (e) {
-          campaign.tags = [];
-        }
-      } else {
-        campaign.tags = [];
-      }
-      return campaign;
-    });
-
-    return campaigns;
+    return (rows || []).map((c) => this._hydrateCampaignRow(c));
   }
 
   async getCampaignById(campaignId, clubId) {
@@ -93,49 +103,43 @@ class CampaignService {
     );
 
     const campaign = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-    
-    // Parse tags back to array for response
-    if (campaign && campaign.tags) {
-      try {
-        campaign.tags = JSON.parse(campaign.tags);
-      } catch (e) {
-        campaign.tags = [];
-      }
-    } else if (campaign) {
-      campaign.tags = [];
-    }
-
-    return campaign;
+    return this._hydrateCampaignRow(campaign);
   }
 
   async updateCampaign(campaignId, clubId, updateData) {
-    // Build dynamic update query
     const allowedFields = [
-      'name', 
-      'description', 
-      'target_amount', 
-      'category', 
-      'start_date', 
-      'end_date', 
-      'tags'
+      'name',
+      'description',
+      'target_amount',
+      'category',
+      'start_date',
+      'end_date',
+      'tags',
+      'impact_area_ids', // ✅ NEW
     ];
-    
-    const updateFields = Object.keys(updateData).filter(key => 
-      allowedFields.includes(key) && updateData[key] !== undefined
+
+    const updateFields = Object.keys(updateData).filter(
+      (key) => allowedFields.includes(key) && updateData[key] !== undefined
     );
-    
+
     if (updateFields.length === 0) {
       throw new Error('No valid fields to update');
     }
 
-    // Process the data
     const processedData = { ...updateData };
-    if (processedData.tags && Array.isArray(processedData.tags)) {
-      processedData.tags = JSON.stringify(processedData.tags);
+
+    if (processedData.tags !== undefined) {
+      processedData.tags = JSON.stringify(this._normalizeStringArray(processedData.tags));
     }
 
-    const setClause = updateFields.map(field => `${field} = ?`).join(', ');
-    const values = updateFields.map(field => processedData[field]);
+    if (processedData.impact_area_ids !== undefined) {
+      processedData.impact_area_ids = JSON.stringify(
+        this._normalizeStringArray(processedData.impact_area_ids)
+      );
+    }
+
+    const setClause = updateFields.map((field) => `${field} = ?`).join(', ');
+    const values = updateFields.map((field) => processedData[field]);
     values.push(campaignId, clubId);
 
     const [result] = await database.connection.execute(
@@ -147,19 +151,17 @@ class CampaignService {
       return null;
     }
 
-    // Return updated campaign
     return await this.getCampaignById(campaignId, clubId);
   }
 
   async deleteCampaign(campaignId, clubId) {
-    // Check if campaign has associated events first
     const [eventRows] = await database.connection.execute(
       `SELECT COUNT(*) as event_count FROM ${this.prefix}events WHERE campaign_id = ?`,
       [campaignId]
     );
 
     const eventCount = Array.isArray(eventRows) ? eventRows[0].event_count : 0;
-    
+
     if (eventCount > 0) {
       throw new Error('Cannot delete campaign with associated events');
     }
@@ -173,7 +175,6 @@ class CampaignService {
   }
 
   async getCampaignStats(campaignId, clubId) {
-    // Get campaign with event statistics
     const [campaignRows] = await database.connection.execute(
       `SELECT 
         c.*,
@@ -191,23 +192,12 @@ class CampaignService {
       return null;
     }
 
-    const campaign = campaignRows[0];
-    
-    // Parse tags back to array for response
-    if (campaign.tags) {
-      try {
-        campaign.tags = JSON.parse(campaign.tags);
-      } catch (e) {
-        campaign.tags = [];
-      }
-    } else {
-      campaign.tags = [];
-    }
-    
-    // Calculate progress percentage
-    campaign.progress_percentage = campaign.target_amount > 0 
-      ? Math.round((campaign.total_raised / campaign.target_amount) * 100)
-      : 0;
+    const campaign = this._hydrateCampaignRow(campaignRows[0]);
+
+    campaign.progress_percentage =
+      campaign.target_amount > 0
+        ? Math.round((campaign.total_raised / campaign.target_amount) * 100)
+        : 0;
 
     return campaign;
   }

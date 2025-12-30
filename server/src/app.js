@@ -22,6 +22,12 @@ import userRoutes from './routes/users.js';
 import prizeRoutes from './routes/prizes.js';
 import taskRoutes from './routes/tasks.js';
 
+import impactRoutes from './routes/impact.js';
+
+import entitySetupRoutes from './routes/entitySetup.js';
+
+// Initialize Express app
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -47,6 +53,9 @@ app.use('/', expenseRoutes);
 app.use('/', incomeRoutes);
 app.use('/', financialRoutes);
 app.use('/', supporterRoutes);
+app.use('/', impactRoutes); 
+app.use('/', entitySetupRoutes);
+
 
 // API Routes - NEW Sprint Features (need to check the route structure)
 app.use('/api', userRoutes);    // User management - ONLY this one needs /api

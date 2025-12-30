@@ -49,6 +49,53 @@ router.get('/api/events/:eventId/financials',
   }
 );
 
+// ===== CAMPAIGN FINANCIAL BREAKDOWN =====
+
+// Get detailed financial breakdown for a specific campaign
+router.get('/api/campaigns/:campaignId/financials',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      
+      const breakdown = await financialService.getCampaignFinancialBreakdown(campaignId, req.club_id);
+      res.json(breakdown);
+    } catch (error) {
+      console.error('Get campaign financial breakdown error:', error);
+      if (error.message === 'Campaign not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Manually recalculate financials for a campaign
+router.post('/api/campaigns/:campaignId/financials/recalculate',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      
+      const financials = await financialService.recalculateCampaignFinancials(campaignId, req.club_id);
+      
+      const socketManager = getSocketManager(req);
+      socketManager.emitCampaignFinancialsUpdated(req.club_id, campaignId, financials);
+
+      res.json({
+        message: 'Campaign financials recalculated successfully',
+        financials
+      });
+    } catch (error) {
+      console.error('Recalculate campaign financials error:', error);
+      if (error.message === 'Campaign not found' || error.message === 'Access denied') {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 // ===== FINANCIAL REPORTS =====
 
 // Get expenses grouped by category for a specific time period
@@ -143,6 +190,53 @@ router.post('/api/events/:eventId/financials/recalculate',
       if (error.message === 'Event not found' || error.message === 'Access denied') {
         return res.status(404).json({ error: error.message });
       }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// ===== ALLOCATION TRACKING =====
+
+// Get summary of allocated funds
+router.get('/api/clubs/:clubId/financials/allocated-funds',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { clubId } = req.params;
+      
+      if (clubId !== req.club_id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const summary = await financialService.getAllocatedFundsSummary(clubId);
+      res.json(summary);
+    } catch (error) {
+      console.error('Get allocated funds summary error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Check allocation availability (soft validation)
+router.get('/api/clubs/:clubId/financials/check-allocation',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { clubId } = req.params;
+      const { amount } = req.query;
+      
+      if (clubId !== req.club_id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      if (!amount) {
+        return res.status(400).json({ error: 'Amount parameter is required' });
+      }
+
+      const check = await financialService.checkAllocationAvailability(clubId, parseFloat(amount));
+      res.json(check);
+    } catch (error) {
+      console.error('Check allocation availability error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

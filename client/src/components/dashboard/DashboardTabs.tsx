@@ -9,11 +9,12 @@ interface DashboardTabsProps {
 // ✅ Central tab config (IDs stay stable, labels can change anytime)
 const tabs: { id: string; label: string }[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'campaigns', label: 'Campaign' },
-  { id: 'events', label: 'Eventr' },
+  { id: 'campaigns', label: 'Campaigns' },  
+  { id: 'events', label: 'Events' },
   { id: 'supporters', label: 'Supporters' },
   { id: 'income', label: 'Income' },        // placeholder for now
   { id: 'expenses', label: 'Expense' },     // NEW
+  { id: 'impact', label: 'Impact' },        // NEW - Impact tracking
   { id: 'prizes', label: 'Prize' },
   { id: 'tasks', label: 'Task' },           // NEW
   { id: 'prizefinder', label: 'AI Supporter Finder' }, // relabel existing tab

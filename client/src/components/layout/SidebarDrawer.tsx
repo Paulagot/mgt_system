@@ -1,3 +1,4 @@
+// client/src/components/Navigation/SidebarDrawer.tsx
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -8,6 +9,9 @@ import {
   Sliders,
   LayoutDashboard,
   LogOut,
+  Building2,
+  CreditCard,
+  CheckCircle,
 } from "lucide-react";
 import { useAuth } from "../../store/app_store";
 import type { UserRole } from "../../types/types";
@@ -18,6 +22,8 @@ type NavLinkItem = {
   icon: React.ReactNode;
   roles?: UserRole[];
   disabled?: boolean;
+  badge?: string;
+  badgeColor?: string;
 };
 
 export default function SidebarDrawer() {
@@ -26,7 +32,37 @@ export default function SidebarDrawer() {
   const { user, club, logout } = useAuth();
 
   const links: NavLinkItem[] = [
-    { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+    { 
+      to: "/dashboard", 
+      label: "Dashboard", 
+      icon: <LayoutDashboard className="h-4 w-4" /> 
+    },
+
+    // ✅ Entity Setup (onboarding)
+    {
+      to: "/entity-setup",
+      label: "Entity Setup",
+      icon: <Building2 className="h-4 w-4" />,
+      roles: ["host", "admin"],
+    },
+
+    // ✅ Verification Status
+    {
+      to: "/verification-status",
+      label: "Verification Status",
+      icon: <CheckCircle className="h-4 w-4" />,
+      roles: ["host", "admin"],
+      // TODO: Add badge based on status dynamically
+    },
+
+    // ✅ Payment Setup
+    {
+      to: "/payment-setup",
+      label: "Payment Methods",
+      icon: <CreditCard className="h-4 w-4" />,
+      roles: ["host", "admin"],
+      disabled: true, // Will be enabled in Phase 3
+    },
 
     // ✅ Team Management (role gated)
     {
@@ -37,8 +73,18 @@ export default function SidebarDrawer() {
     },
 
     // ✅ Placeholders
-    { to: "/settings", label: "Account Settings", icon: <Settings className="h-4 w-4" />, disabled: true },
-    { to: "/preferences", label: "Preferences", icon: <Sliders className="h-4 w-4" />, disabled: true },
+    { 
+      to: "/settings", 
+      label: "Account Settings", 
+      icon: <Settings className="h-4 w-4" />, 
+      disabled: true 
+    },
+    { 
+      to: "/preferences", 
+      label: "Preferences", 
+      icon: <Sliders className="h-4 w-4" />, 
+      disabled: true 
+    },
   ];
 
   const canSee = (item: NavLinkItem) => {
@@ -118,8 +164,8 @@ export default function SidebarDrawer() {
                   title="Coming soon"
                 >
                   {item.icon}
-                  <span className="text-sm font-medium">{item.label}</span>
-                  <span className="ml-auto text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
                     soon
                   </span>
                 </div>
@@ -138,13 +184,22 @@ export default function SidebarDrawer() {
                 }`}
               >
                 {item.icon}
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.badge && (
+                  <span 
+                    className={`text-xs text-white px-2 py-0.5 rounded-full ${
+                      item.badgeColor || 'bg-blue-600'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}
         </nav>
 
-        <div className="mt-auto p-3 border-t border-gray-200">
+        <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-gray-200 bg-white">
           <button
             onClick={logout}
             className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold"

@@ -1,3 +1,4 @@
+// client/src/components/cards/EventCard.tsx (UPDATED WITH PUBLISH)
 import React from 'react';
 import { 
   Calendar, 
@@ -10,7 +11,9 @@ import {
   Trash2,
   Eye,
   Target,
-  Gift // NEW: Added for prizes
+  Gift,
+  CheckCircle, // For publish button
+  FileText // For draft badge
 } from 'lucide-react';
 import { Event } from '../../types/types';
 
@@ -19,9 +22,9 @@ interface EventCardProps {
   onEdit: (event: Event) => void;
   onDelete: (eventId: string) => void;
   onView: (event: Event) => void;
+  onPublish?: (eventId: string) => void; // NEW: Publish handler
   campaignName?: string;
   className?: string;
-  // NEW: Optional prize data
   prizeCount?: number;
   prizeValue?: number;
 }
@@ -31,10 +34,11 @@ const EventCard: React.FC<EventCardProps> = ({
   onEdit, 
   onDelete, 
   onView,
+  onPublish, // NEW
   campaignName,
   className = "",
-  prizeCount = 0, // NEW
-  prizeValue = 0  // NEW
+  prizeCount = 0,
+  prizeValue = 0
 }) => {
   // Calculate progress percentage with safe defaults
   const progressPercentage = event.goal_amount > 0 
@@ -59,6 +63,9 @@ const EventCard: React.FC<EventCardProps> = ({
   const eventDate = new Date(event.event_date);
   const isUpcoming = eventDate > now;
   const isToday = eventDate.toDateString() === now.toDateString();
+
+  // NEW: Check if event is published
+  const isPublished = event.is_published !== false; // Default to true for backward compatibility
 
   // Status badge styling
   const getStatusStyle = (status: string) => {
@@ -91,13 +98,28 @@ const EventCard: React.FC<EventCardProps> = ({
             <h3 className="text-lg font-semibold text-gray-900 truncate">
               {event.title}
             </h3>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="text-sm text-gray-600 capitalize bg-gray-50 px-2 py-1 rounded">
                 {event.type}
               </span>
               <span className={`text-xs font-medium px-2 py-1 rounded-full border ${getStatusStyle(event.status)}`}>
                 {event.status}
               </span>
+              
+              {/* NEW: Draft/Published Badge */}
+              {!isPublished && (
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200 flex items-center gap-1">
+                  <FileText className="w-3 h-3" />
+                  Draft
+                </span>
+              )}
+              {isPublished && (
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800 border border-green-200 flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" />
+                  Published
+                </span>
+              )}
+              
               {isToday && (
                 <span className="text-xs font-medium px-2 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-200">
                   Today
@@ -115,6 +137,18 @@ const EventCard: React.FC<EventCardProps> = ({
             >
               <Eye className="w-4 h-4" />
             </button>
+            
+            {/* NEW: Show Publish button only for drafts */}
+            {!isPublished && onPublish && (
+              <button
+                onClick={() => onPublish(event.id)}
+                className="p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
+                title="Publish Event"
+              >
+                <CheckCircle className="w-4 h-4" />
+              </button>
+            )}
+            
             <button
               onClick={() => onEdit(event)}
               className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded transition-colors"
@@ -172,7 +206,6 @@ const EventCard: React.FC<EventCardProps> = ({
             </div>
           )}
 
-          {/* NEW: Prize information */}
           {prizeCount > 0 && (
             <div className="flex items-center text-sm text-gray-600">
               <Gift className="w-4 h-4 mr-2 text-gray-400" />
