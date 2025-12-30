@@ -9,7 +9,7 @@ import CampaignsTab from './CampaignsTab';
 import EventsTab from './EventsTab';
 import SupportersTab from './SupportersTab';
 import FinancialsTab from './FinancialsTab';
-import PrizesTab from '../prizes/PrizesTab';
+import PrizesTab from './PrizesTab';
 import CreateEventForm from '../events/CreateEventForm';
 import CreateCampaignForm from '../campaigns/CreateCampaignForm';
 import CreateSupporterForm from '../supporters/forms/CreateSupporterForm';
@@ -20,12 +20,13 @@ import { useClubDashboard } from '../../hooks/useClubDashboard';
 import { useClubDashboardHandlers } from '../../hooks/useClubDashboardHandlers';
 import PrizeFinderTab from './PrizeFinderTab';
 import { Supporter } from '../../types/types';
-import TaskManagement from '../users/TaskManagement';
+import ClubTaskManagement from '../tasks/Clubtaskmanagement';
 import ClubExpenseManager from '../financial/ClubExpenseManager';
 import ClubIncomeManager from '../financial/Clubincomemanager';
 import ClubImpactDashboard from '../impact/ClubImpactDashboard';
 import eventsService from '../../services/eventsServices'; // ADD THIS
 import campaignsService from '../../services/campaignsServices'; // ADD THIS
+import ClubPrizeManagement from '../prizes/Clubprizemanagement';
 
 export default function ClubDashboard() {
   const dashboard = useClubDashboard();
@@ -103,6 +104,26 @@ export default function ClubDashboard() {
       throw error;
     }
   };
+
+  const handleUnpublishEvent = async (eventId: string) => {
+  try {
+    await eventsService.unpublishEvent(eventId);
+    await dashboard.loadClubData();
+  } catch (error: any) {
+    console.error('Failed to unpublish:', error);
+    throw error;
+  }
+};
+
+const handleUnpublishCampaign = async (campaignId: string) => {
+  try {
+    await campaignsService.unpublishCampaign(campaignId);
+    await dashboard.loadClubData();
+  } catch (error: any) {
+    console.error('Failed to unpublish:', error);
+    throw error;
+  }
+};
 
   // ===== END NEW HANDLERS =====
 
@@ -297,6 +318,8 @@ export default function ClubDashboard() {
             onDeleteCampaign={handlers.handleDeleteCampaign}
             onViewCampaign={() => {}}
             onPublishCampaign={handlePublishCampaign} // ✅ FIXED: Added publish handler
+            onUnpublishCampaign={handleUnpublishCampaign}
+            
           />
         )}
 
@@ -310,7 +333,9 @@ export default function ClubDashboard() {
             onDeleteEvent={handlers.handleDeleteEvent}
             onViewEvent={() => {}}
             onPublishEvent={handlePublishEvent} // ✅ FIXED: Added publish handler
+            onUnpublishEvent={handleUnpublishEvent}
             getPrizeDataForEvent={dashboard.getPrizeDataForEvent}
+           
           />
         )}
 
@@ -358,13 +383,19 @@ export default function ClubDashboard() {
           />
         )}
 
-        {activeTab === 'tasks' && (
-          <div>
-            <TaskManagement />
-          </div>
+        {activeTab === 'tasks' && club && (
+          <ClubTaskManagement 
+            events={dashboard.events}
+            clubId={club.id}
+          />
         )}
 
-        {activeTab === 'prizes' && <PrizesTab events={dashboard.events} />}
+            {activeTab === 'prizes' && club && (
+          <ClubPrizeManagement 
+            events={dashboard.events}
+            clubId={club.id}
+          />
+        )}
 
         {activeTab === 'prizefinder' && club && (
           <PrizeFinderTab

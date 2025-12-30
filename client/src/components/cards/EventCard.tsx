@@ -1,10 +1,9 @@
-// client/src/components/cards/EventCard.tsx (UPDATED WITH PUBLISH)
+// client/src/components/cards/EventCard.tsx 
 import React from 'react';
 import { 
   Calendar, 
   MapPin, 
   Users, 
-  DollarSign, 
   TrendingUp, 
   TrendingDown,
   Edit,
@@ -12,8 +11,9 @@ import {
   Eye,
   Target,
   Gift,
-  CheckCircle, // For publish button
-  FileText // For draft badge
+  CheckCircle,
+  FileText,
+  XCircle
 } from 'lucide-react';
 import { Event } from '../../types/types';
 
@@ -22,7 +22,8 @@ interface EventCardProps {
   onEdit: (event: Event) => void;
   onDelete: (eventId: string) => void;
   onView: (event: Event) => void;
-  onPublish?: (eventId: string) => void; // NEW: Publish handler
+  onPublish?: (eventId: string) => void;
+  onUnpublish?: (eventId: string) => void;
   campaignName?: string;
   className?: string;
   prizeCount?: number;
@@ -34,7 +35,8 @@ const EventCard: React.FC<EventCardProps> = ({
   onEdit, 
   onDelete, 
   onView,
-  onPublish, // NEW
+  onPublish,
+  onUnpublish,
   campaignName,
   className = "",
   prizeCount = 0,
@@ -58,27 +60,42 @@ const EventCard: React.FC<EventCardProps> = ({
     });
   };
 
-  // Determine if event is upcoming, live, or past
+  // Determine if event is upcoming (for styling)
   const now = new Date();
   const eventDate = new Date(event.event_date);
   const isUpcoming = eventDate > now;
-  const isToday = eventDate.toDateString() === now.toDateString();
 
-  // NEW: Check if event is published
-  const isPublished = event.is_published !== false; // Default to true for backward compatibility
+  // ✅ is_published = visibility to public (trust system)
+  const isPublished = Boolean(event.is_published);
 
-  // Status badge styling
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'live':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'draft':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'ended':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-      default:
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+  // ✅ UPDATED: Use backend's computed_status with fallback to event.status
+  const getEventTimingBadge = () => {
+    // Use computed_status from backend (fallback to status for backward compatibility)
+    const status = event.computed_status || event.status;
+    
+    if (status === 'live') {
+      return { 
+        label: 'Live', 
+        color: 'bg-green-100 text-green-800 border-green-200' 
+      };
     }
+    
+    if (status === 'ended') {
+      return { 
+        label: 'Ended', 
+        color: 'bg-gray-100 text-gray-800 border-gray-200' 
+      };
+    }
+    
+    if (status === 'today') {
+      return { 
+        label: 'Today', 
+        color: 'bg-orange-100 text-orange-800 border-orange-200' 
+      };
+    }
+    
+    // Don't show badge for 'upcoming'
+    return null;
   };
 
   // Profit/loss styling with safe defaults
@@ -88,6 +105,8 @@ const EventCard: React.FC<EventCardProps> = ({
     if (profitValue < 0) return 'text-red-600';
     return 'text-gray-600';
   };
+
+  const timingBadge = getEventTimingBadge();
 
   return (
     <div className={`bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200 ${className}`}>
@@ -99,30 +118,28 @@ const EventCard: React.FC<EventCardProps> = ({
               {event.title}
             </h3>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {/* Event type */}
               <span className="text-sm text-gray-600 capitalize bg-gray-50 px-2 py-1 rounded">
                 {event.type}
               </span>
-              <span className={`text-xs font-medium px-2 py-1 rounded-full border ${getStatusStyle(event.status)}`}>
-                {event.status}
-              </span>
               
-              {/* NEW: Draft/Published Badge */}
-              {!isPublished && (
+              {/* ✅ Event timing badge (from backend's computed_status) */}
+              {timingBadge && (
+                <span className={`text-xs font-medium px-2 py-1 rounded-full border ${timingBadge.color}`}>
+                  {timingBadge.label}
+                </span>
+              )}
+              
+              {/* ✅ PUBLISH STATUS Badge (Draft or Published - from is_published) */}
+              {!isPublished ? (
                 <span className="text-xs font-medium px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200 flex items-center gap-1">
                   <FileText className="w-3 h-3" />
                   Draft
                 </span>
-              )}
-              {isPublished && (
+              ) : (
                 <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800 border border-green-200 flex items-center gap-1">
                   <CheckCircle className="w-3 h-3" />
                   Published
-                </span>
-              )}
-              
-              {isToday && (
-                <span className="text-xs font-medium px-2 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-200">
-                  Today
                 </span>
               )}
             </div>
@@ -138,7 +155,7 @@ const EventCard: React.FC<EventCardProps> = ({
               <Eye className="w-4 h-4" />
             </button>
             
-            {/* NEW: Show Publish button only for drafts */}
+            {/* ⭐ Show Publish button only for drafts */}
             {!isPublished && onPublish && (
               <button
                 onClick={() => onPublish(event.id)}
@@ -146,6 +163,17 @@ const EventCard: React.FC<EventCardProps> = ({
                 title="Publish Event"
               >
                 <CheckCircle className="w-4 h-4" />
+              </button>
+            )}
+            
+            {/* ⭐ Show Unpublish button only for published events */}
+            {isPublished && onUnpublish && (
+              <button
+                onClick={() => onUnpublish(event.id)}
+                className="p-1.5 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-50 rounded transition-colors"
+                title="Unpublish Event (make draft)"
+              >
+                <XCircle className="w-4 h-4" />
               </button>
             )}
             

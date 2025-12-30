@@ -47,7 +47,7 @@ class CampaignService {
       start_date,
       end_date,
       tags,
-      impact_area_ids, // ✅ NEW
+      impact_area_ids,
     } = campaignData;
 
     const campaignId = uuidv4();
@@ -59,11 +59,12 @@ class CampaignService {
         ? JSON.stringify(this._normalizeStringArray(impact_area_ids))
         : null;
 
+    // Campaigns are created as drafts by default (is_published = FALSE)
     await database.connection.execute(
       `INSERT INTO ${this.prefix}campaigns (
         id, club_id, name, description, target_amount,
-        category, start_date, end_date, tags, impact_area_ids
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        category, start_date, end_date, tags, impact_area_ids, is_published
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
       [
         campaignId,
         clubId,
@@ -87,9 +88,63 @@ class CampaignService {
     return this._hydrateCampaignRow(campaign);
   }
 
+  /**
+   * Publish a campaign - makes it visible to the public
+   * Trust status should be checked before calling this method
+   */
+  async publishCampaign(campaignId, clubId) {
+    const [result] = await database.connection.execute(
+      `UPDATE ${this.prefix}campaigns 
+       SET is_published = TRUE 
+       WHERE id = ? AND club_id = ?`,
+      [campaignId, clubId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Campaign not found');
+    }
+
+    // Return the updated campaign
+    return await this.getCampaignById(campaignId, clubId);
+  }
+
+  /**
+   * Unpublish a campaign - makes it a draft again
+   */
+  async unpublishCampaign(campaignId, clubId) {
+    const [result] = await database.connection.execute(
+      `UPDATE ${this.prefix}campaigns 
+       SET is_published = FALSE 
+       WHERE id = ? AND club_id = ?`,
+      [campaignId, clubId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Campaign not found');
+    }
+
+    // Return the updated campaign
+    return await this.getCampaignById(campaignId, clubId);
+  }
+
   async getCampaignsByClub(clubId) {
     const [rows] = await database.connection.execute(
       `SELECT * FROM ${this.prefix}campaigns WHERE club_id = ? ORDER BY created_at DESC`,
+      [clubId]
+    );
+
+    return (rows || []).map((c) => this._hydrateCampaignRow(c));
+  }
+
+  /**
+   * Get only published campaigns for a club (for public pages)
+   */
+  async getPublishedCampaignsByClub(clubId) {
+    const [rows] = await database.connection.execute(
+      `SELECT * FROM ${this.prefix}campaigns 
+       WHERE club_id = ? 
+       AND is_published = TRUE 
+       ORDER BY created_at DESC`,
       [clubId]
     );
 
@@ -115,7 +170,8 @@ class CampaignService {
       'start_date',
       'end_date',
       'tags',
-      'impact_area_ids', // ✅ NEW
+      'impact_area_ids',
+      'is_published', // Allow updating is_published
     ];
 
     const updateFields = Object.keys(updateData).filter(

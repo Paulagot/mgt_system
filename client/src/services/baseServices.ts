@@ -49,7 +49,20 @@ class BaseService {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('❌ API Error Response:', errorData);
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        
+        // ✅ FIXED: Create error and preserve ALL properties from backend
+        const error = new Error(
+          errorData.message || errorData.error || `HTTP error! status: ${response.status}`
+        ) as any;
+        
+        // Copy ALL backend error properties to the error object
+        Object.keys(errorData).forEach(key => {
+          if (key !== 'error' && key !== 'message') {
+            error[key] = errorData[key];
+          }
+        });
+        
+        throw error;
       }
 
       const data = await response.json();

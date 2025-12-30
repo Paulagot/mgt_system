@@ -59,7 +59,7 @@ class CampaignsService extends BaseService {
   }
 
   /**
-   * ✅ NEW: Publish a campaign (makes it public, requires trust check)
+   * ✅ Publish a campaign (makes it public, requires trust check)
    */
   async publishCampaign(campaignId: string): Promise<{ message: string; campaign: Campaign }> {
     return this.request<{ message: string; campaign: Campaign }>(`/campaigns/${campaignId}/publish`, {
@@ -68,10 +68,19 @@ class CampaignsService extends BaseService {
   }
 
   /**
+   * ✅ NEW: Unpublish a campaign (makes it draft again)
+   */
+  async unpublishCampaign(campaignId: string): Promise<{ message: string; campaign: Campaign }> {
+    return this.request<{ message: string; campaign: Campaign }>(`/campaigns/${campaignId}/unpublish`, {
+      method: 'PATCH',
+    });
+  }
+
+  /**
    * Get public campaigns (only published campaigns)
    */
   async getPublicCampaigns(clubId: string): Promise<{ campaigns: Campaign[] }> {
-    return this.request<{ campaigns: Campaign[] }>(`/clubs/${clubId}/campaigns/public`);
+    return this.request<{ campaigns: Campaign[] }>(`/clubs/${clubId}/campaigns/published`);
   }
 
   /**

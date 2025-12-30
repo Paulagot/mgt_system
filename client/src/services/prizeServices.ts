@@ -1,4 +1,4 @@
-// client/src/services/prizeService.ts (FIXED - Remove socket code, fix imports)
+// client/src/services/prizeService.ts 
 import BaseService from './baseServices';
 import { 
   Prize, 
@@ -115,7 +115,11 @@ validatePrizeData(data: CreatePrizeData): string[] {
 
   // Helper method to calculate total prize value
   calculateTotalValue(prizes: Prize[]): number {
-    return prizes.reduce((total, prize) => total + prize.value, 0);
+    return prizes.reduce((total, prize) => {
+      // Convert to number to handle both string and number values from database
+      const value = parseFloat(String(prize.value)) || 0;
+      return total + value;
+    }, 0);
   }
 
   // Helper method to sort prizes
@@ -125,7 +129,10 @@ validatePrizeData(data: CreatePrizeData): string[] {
         case 'name':
           return a.name.localeCompare(b.name);
         case 'value':
-          return b.value - a.value; // Descending order
+          // Convert to numbers to handle string values from database
+          const valueA = parseFloat(String(a.value)) || 0;
+          const valueB = parseFloat(String(b.value)) || 0;
+          return valueB - valueA; // Descending order
         case 'donor':
           const donorA = a.donor_name || 'zzz'; // Put anonymous at end
           const donorB = b.donor_name || 'zzz';

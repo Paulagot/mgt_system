@@ -49,10 +49,19 @@ class EventsService extends BaseService {
   }
 
   /**
-   * ✅ NEW: Publish an event (makes it public, requires trust check)
+   * ✅ Publish an event (makes it public, requires trust check)
    */
   async publishEvent(eventId: string): Promise<{ message: string; event: Event }> {
     return this.request<{ message: string; event: Event }>(`/events/${eventId}/publish`, {
+      method: 'PATCH',
+    });
+  }
+
+  /**
+   * ✅ NEW: Unpublish an event (makes it draft again)
+   */
+  async unpublishEvent(eventId: string): Promise<{ message: string; event: Event }> {
+    return this.request<{ message: string; event: Event }>(`/events/${eventId}/unpublish`, {
       method: 'PATCH',
     });
   }
@@ -88,7 +97,7 @@ class EventsService extends BaseService {
    * Get public events (only published events)
    */
   async getPublicEvents(clubId: string): Promise<{ events: Event[] }> {
-    return this.request<{ events: Event[] }>(`/clubs/${clubId}/events/public`);
+    return this.request<{ events: Event[] }>(`/clubs/${clubId}/events/published`);
   }
 
   /**
@@ -165,8 +174,6 @@ class EventsService extends BaseService {
     const now = new Date();
     const eventDate = new Date(event.event_date);
 
- 
-
     if (event.status === 'ended' || eventDate < now) {
       return { color: 'gray', label: 'Ended' };
     }
@@ -190,7 +197,7 @@ class EventsService extends BaseService {
     const now = new Date();
     
     // Can edit if event hasn't happened yet
-    return eventDate > now ;
+    return eventDate > now;
   }
 
   /**

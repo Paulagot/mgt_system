@@ -146,6 +146,36 @@ export const getEventStatusColor = (status) => {
   return colors[status] || '#gray';
 };
 
+export const getComputedEventStatus = (event) => {
+  if (!event || !event.event_date) {
+    return 'upcoming';
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0); // Start of today
+  
+  const eventDate = new Date(event.event_date);
+  eventDate.setHours(0, 0, 0, 0); // Start of event day
+
+  // Manual 'live' override takes priority
+  // (Admin manually set this event as live)
+  if (event.status === 'live') {
+    return 'live';
+  }
+
+  // Date-based automatic status
+  if (eventDate < now) {
+    return 'ended';
+  }
+
+  if (eventDate.getTime() === now.getTime()) {
+    return 'today';
+  }
+
+  // Future event
+  return 'upcoming';
+};
+
 // ===== FINANCIAL HELPERS =====
 
 export const calculateProfitMargin = (income, expenses) => {

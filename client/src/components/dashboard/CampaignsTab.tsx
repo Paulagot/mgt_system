@@ -1,4 +1,4 @@
-// client/src/components/campaigns/CampaignsTab.tsx (UPDATED WITH PUBLISH & FILTERS)
+// client/src/components/campaigns/CampaignsTab.tsx (COMPLETE WITH UNPUBLISH)
 
 import React, { useState, useEffect } from 'react';
 import { Campaign } from '../../types/types';
@@ -15,12 +15,13 @@ interface TrustStatus {
 
 interface CampaignsTabProps {
   campaigns: Campaign[];
-  clubId: string; // NEW: Need club ID for trust check
+  clubId: string;
   onCreateCampaign: () => void;
   onEditCampaign: (campaign: Campaign) => void;
   onDeleteCampaign: (campaignId: string) => void;
   onViewCampaign: (campaign: Campaign) => void;
-  onPublishCampaign?: (campaignId: string) => Promise<void>; // NEW: Publish handler
+  onPublishCampaign?: (campaignId: string) => Promise<void>;
+  onUnpublishCampaign?: (campaignId: string) => Promise<void>; // NEW
 }
 
 const CampaignsTab: React.FC<CampaignsTabProps> = ({
@@ -31,24 +32,21 @@ const CampaignsTab: React.FC<CampaignsTabProps> = ({
   onDeleteCampaign,
   onViewCampaign,
   onPublishCampaign,
+  onUnpublishCampaign, // NEW
 }) => {
-  // Filter state
   const [showFilter, setShowFilter] = useState<'all' | 'draft' | 'published'>('all');
-  
-  // Trust status state
   const [trustStatus, setTrustStatus] = useState<TrustStatus | null>(null);
   const [showTrustWarning, setShowTrustWarning] = useState(false);
   const [trustWarningMessage, setTrustWarningMessage] = useState('');
 
-  // Load trust status on mount
+  // ✅ Helper function for is_published check
+  const isCampaignPublished = (campaign: Campaign): boolean => {
+    return Boolean(campaign.is_published);
+  };
+
   useEffect(() => {
     const checkTrust = async () => {
       try {
-        // TODO: Replace with your actual ImpactService call
-        // const { trustStatus } = await ImpactService.getClubTrustStatus(clubId);
-        // setTrustStatus(trustStatus);
-        
-        // Mock for now - you'll replace this with actual API call
         const mockTrustStatus: TrustStatus = {
           canCreateEvent: true,
           reason: undefined,
@@ -60,27 +58,22 @@ const CampaignsTab: React.FC<CampaignsTabProps> = ({
         console.error('Error checking trust status:', error);
       }
     };
-    
     checkTrust();
   }, [clubId]);
 
-  // Handle publish with trust check
   const handlePublish = async (campaignId: string) => {
-    // Check trust status before publishing
     if (!trustStatus?.canCreateEvent) {
       setTrustWarningMessage(
         trustStatus?.reason || 
-        'Outstanding impact reports must be completed before publishing new campaigns. Please complete your pending impact reports first.'
+        'Outstanding impact reports must be completed before publishing.'
       );
       setShowTrustWarning(true);
       return;
     }
 
-    // If trust check passes, proceed with publishing
     if (onPublishCampaign) {
       try {
         await onPublishCampaign(campaignId);
-        // Success - campaign is now published
       } catch (error) {
         console.error('Error publishing campaign:', error);
         setTrustWarningMessage('Failed to publish campaign. Please try again.');
@@ -89,37 +82,43 @@ const CampaignsTab: React.FC<CampaignsTabProps> = ({
     }
   };
 
-  // Filter campaigns based on selection
+  // ✅ NEW: Unpublish handler
+  const handleUnpublish = async (campaignId: string) => {
+    if (onUnpublishCampaign) {
+      try {
+        await onUnpublishCampaign(campaignId);
+      } catch (error) {
+        console.error('Error unpublishing campaign:', error);
+        setTrustWarningMessage('Failed to unpublish campaign. Please try again.');
+        setShowTrustWarning(true);
+      }
+    }
+  };
+
+  // ✅ Filter using helper function
   const filteredCampaigns = campaigns.filter(campaign => {
-    if (showFilter === 'draft') return campaign.is_published === false;
-    if (showFilter === 'published') return campaign.is_published !== false;
-    return true; // 'all'
+    if (showFilter === 'draft') return !isCampaignPublished(campaign);
+    if (showFilter === 'published') return isCampaignPublished(campaign);
+    return true;
   });
 
-  // Count drafts and published
-  const draftCount = campaigns.filter(c => c.is_published === false).length;
-  const publishedCount = campaigns.filter(c => c.is_published !== false).length;
+  // ✅ Count using helper function
+  const draftCount = campaigns.filter(c => !isCampaignPublished(c)).length;
+  const publishedCount = campaigns.filter(c => isCampaignPublished(c)).length;
 
   return (
     <div className="space-y-6">
-      {/* Header with Create button */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Campaigns</h2>
-        <button
-          onClick={onCreateCampaign}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Campaign
+        <button onClick={onCreateCampaign} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center">
+          <Plus className="h-4 w-4 mr-2" />New Campaign
         </button>
       </div>
 
-      {/* Trust Status Warning Banner */}
       {trustStatus && !trustStatus.canCreateEvent && (
         <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
           <h3 className="text-red-800 font-semibold mb-2 flex items-center">
-            <span className="mr-2">⚠️</span>
-            Publishing Restricted
+            <span className="mr-2">⚠️</span>Publishing Restricted
           </h3>
           <p className="text-red-700 text-sm mb-2">{trustStatus.reason}</p>
           {trustStatus.outstandingImpactReports && trustStatus.outstandingImpactReports > 0 && (
@@ -132,51 +131,25 @@ const CampaignsTab: React.FC<CampaignsTabProps> = ({
               Overdue by: <strong>{trustStatus.overdueDays} days</strong>
             </p>
           )}
-          <a 
-            href="/impact" 
-            className="text-red-600 underline text-sm mt-2 inline-block hover:text-red-800"
-          >
+          <a href="/impact" className="text-red-600 underline text-sm mt-2 inline-block hover:text-red-800">
             Complete outstanding impact reports →
           </a>
         </div>
       )}
 
-      {/* Filter Buttons */}
       <div className="flex items-center gap-2">
         <Filter className="w-4 h-4 text-gray-500" />
-        <button
-          onClick={() => setShowFilter('all')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            showFilter === 'all'
-              ? 'bg-green-100 text-green-700 border border-green-200'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          All ({campaigns.length})
-        </button>
-        <button
-          onClick={() => setShowFilter('draft')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            showFilter === 'draft'
-              ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Drafts ({draftCount})
-        </button>
-        <button
-          onClick={() => setShowFilter('published')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            showFilter === 'published'
-              ? 'bg-green-100 text-green-700 border border-green-200'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Published ({publishedCount})
-        </button>
+        <button onClick={() => setShowFilter('all')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            showFilter === 'all' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}>All ({campaigns.length})</button>
+        <button onClick={() => setShowFilter('draft')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            showFilter === 'draft' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}>Drafts ({draftCount})</button>
+        <button onClick={() => setShowFilter('published')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            showFilter === 'published' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}>Published ({publishedCount})</button>
       </div>
 
-      {/* Campaigns Grid */}
       {filteredCampaigns.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredCampaigns.map((campaign) => (
@@ -186,7 +159,8 @@ const CampaignsTab: React.FC<CampaignsTabProps> = ({
               onEdit={onEditCampaign}
               onDelete={onDeleteCampaign}
               onView={onViewCampaign}
-              onPublish={handlePublish} // NEW: Pass publish handler
+              onPublish={handlePublish}
+              onUnpublish={handleUnpublish} // ✅ Pass unpublish handler
             />
           ))}
         </div>
@@ -199,23 +173,16 @@ const CampaignsTab: React.FC<CampaignsTabProps> = ({
             {showFilter === 'all' && 'No campaigns yet'}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
-            {showFilter === 'all' 
-              ? 'Create your first campaign to get started'
-              : `Try switching to a different filter`
-            }
+            {showFilter === 'all' ? 'Create your first campaign to get started' : 'Try switching to a different filter'}
           </p>
           {showFilter === 'all' && (
-            <button
-              onClick={onCreateCampaign}
-              className="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-            >
+            <button onClick={onCreateCampaign} className="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
               Create Campaign
             </button>
           )}
         </div>
       )}
 
-      {/* Trust Warning Modal */}
       <AlertModal
         isOpen={showTrustWarning}
         title="Cannot Publish Campaign"

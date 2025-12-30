@@ -1,4 +1,4 @@
-// client/src/components/events/EventsTab.tsx (UPDATED WITH PUBLISH & FILTERS)
+// client/src/components/dashboard/EventsTab.tsx (FINAL - PROPER ERROR HANDLING)
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, Filter } from 'lucide-react';
@@ -15,13 +15,14 @@ interface TrustStatus {
 
 interface EventsTabProps {
   events: Event[];
-  clubId: string; // NEW: Need club ID for trust check
+  clubId: string;
   getCampaignName: (id?: string) => string | undefined;
   onCreateEvent: () => void;
   onEditEvent: (event: Event) => void;
   onDeleteEvent: (eventId: string) => void;
   onViewEvent: (event: Event) => void;
-  onPublishEvent?: (eventId: string) => Promise<void>; // NEW: Publish handler
+  onPublishEvent?: (eventId: string) => Promise<void>;
+  onUnpublishEvent?: (eventId: string) => Promise<void>;
   getPrizeDataForEvent?: (eventId: string) => { count: number; value: number };
 }
 
@@ -34,25 +35,24 @@ const EventsTab: React.FC<EventsTabProps> = ({
   onDeleteEvent,
   onViewEvent,
   onPublishEvent,
+  onUnpublishEvent,
   getPrizeDataForEvent,
 }) => {
-  // Filter state
   const [showFilter, setShowFilter] = useState<'all' | 'draft' | 'published'>('all');
-  
-  // Trust status state
   const [trustStatus, setTrustStatus] = useState<TrustStatus | null>(null);
-  const [showTrustWarning, setShowTrustWarning] = useState(false);
-  const [trustWarningMessage, setTrustWarningMessage] = useState('');
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorTitle, setErrorTitle] = useState('Error');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [errorVariant, setErrorVariant] = useState<'error' | 'warning' | 'info' | 'success'>('warning');
 
-  // Load trust status on mount
+  const isEventPublished = (event: Event): boolean => {
+    return Boolean(event.is_published);
+  };
+
   useEffect(() => {
     const checkTrust = async () => {
       try {
-        // TODO: Replace with your actual ImpactService call
-        // const { trustStatus } = await ImpactService.getClubTrustStatus(clubId);
-        // setTrustStatus(trustStatus);
-        
-        // Mock for now - you'll replace this with actual API call
+        // TODO: Replace with actual trust check
         const mockTrustStatus: TrustStatus = {
           canCreateEvent: true,
           reason: undefined,
@@ -64,49 +64,88 @@ const EventsTab: React.FC<EventsTabProps> = ({
         console.error('Error checking trust status:', error);
       }
     };
-    
     checkTrust();
   }, [clubId]);
 
-  // Handle publish with trust check
   const handlePublish = async (eventId: string) => {
     // Check trust status before publishing
     if (!trustStatus?.canCreateEvent) {
-      setTrustWarningMessage(
+      setErrorTitle('Publishing Restricted');
+      setErrorMessage(
         trustStatus?.reason || 
-        'Outstanding impact reports must be completed before publishing new events. Please complete your pending impact reports first.'
+        'Outstanding impact reports must be completed before publishing.'
       );
-      setShowTrustWarning(true);
+      setErrorVariant('warning');
+      setShowErrorModal(true);
       return;
     }
 
-    // If trust check passes, proceed with publishing
     if (onPublishEvent) {
       try {
         await onPublishEvent(eventId);
-        // Success - event is now published
-      } catch (error) {
-        console.error('Error publishing event:', error);
-        setTrustWarningMessage('Failed to publish event. Please try again.');
-        setShowTrustWarning(true);
+        // Success - no modal needed
+      } catch (error: any) {
+        console.error('❌ Publish error caught:', error);
+        console.log('Error details:', {
+          message: error.message,
+          requiresCampaignPublish: error.requiresCampaignPublish,
+          requiresTrustFix: error.requiresTrustFix,
+          campaignName: error.campaignName,
+        });
+
+        // ✅ Check for campaign publish error
+        if (error.requiresCampaignPublish) {
+          setErrorTitle('Campaign Not Published');
+          setErrorMessage(
+            error.message || 
+            `This event is part of a campaign that must be published first.`
+          );
+          setErrorVariant('warning');
+          setShowErrorModal(true);
+        } 
+        // Check for trust error
+        else if (error.requiresTrustFix) {
+          setErrorTitle('Publishing Restricted');
+          setErrorMessage(error.message || 'Complete outstanding impact reports first.');
+          setErrorVariant('warning');
+          setShowErrorModal(true);
+        }
+        // Generic error
+        else {
+          setErrorTitle('Error');
+          setErrorMessage(error.message || 'Failed to publish event. Please try again.');
+          setErrorVariant('error');
+          setShowErrorModal(true);
+        }
       }
     }
   };
 
-  // Filter events based on selection
+  const handleUnpublish = async (eventId: string) => {
+    if (onUnpublishEvent) {
+      try {
+        await onUnpublishEvent(eventId);
+      } catch (error: any) {
+        console.error('Error unpublishing event:', error);
+        setErrorTitle('Error');
+        setErrorMessage('Failed to unpublish event. Please try again.');
+        setErrorVariant('error');
+        setShowErrorModal(true);
+      }
+    }
+  };
+
   const filteredEvents = events.filter(event => {
-    if (showFilter === 'draft') return event.is_published === false;
-    if (showFilter === 'published') return event.is_published !== false;
-    return true; // 'all'
+    if (showFilter === 'draft') return !isEventPublished(event);
+    if (showFilter === 'published') return isEventPublished(event);
+    return true;
   });
 
-  // Count drafts and published
-  const draftCount = events.filter(e => e.is_published === false).length;
-  const publishedCount = events.filter(e => e.is_published !== false).length;
+  const draftCount = events.filter(e => !isEventPublished(e)).length;
+  const publishedCount = events.filter(e => isEventPublished(e)).length;
 
   return (
     <div className="space-y-6">
-      {/* Header with Create button */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Events</h2>
         <button
@@ -118,7 +157,6 @@ const EventsTab: React.FC<EventsTabProps> = ({
         </button>
       </div>
 
-      {/* Trust Status Warning Banner */}
       {trustStatus && !trustStatus.canCreateEvent && (
         <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
           <h3 className="text-red-800 font-semibold mb-2 flex items-center">
@@ -145,7 +183,6 @@ const EventsTab: React.FC<EventsTabProps> = ({
         </div>
       )}
 
-      {/* Filter Buttons */}
       <div className="flex items-center gap-2">
         <Filter className="w-4 h-4 text-gray-500" />
         <button
@@ -180,7 +217,6 @@ const EventsTab: React.FC<EventsTabProps> = ({
         </button>
       </div>
 
-      {/* Events Grid */}
       {filteredEvents.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEvents.map((event) => {
@@ -193,7 +229,8 @@ const EventsTab: React.FC<EventsTabProps> = ({
                 onEdit={onEditEvent}
                 onDelete={onDeleteEvent}
                 onView={onViewEvent}
-                onPublish={handlePublish} // NEW: Pass publish handler
+                onPublish={handlePublish}
+                onUnpublish={handleUnpublish}
                 campaignName={getCampaignName(event.campaign_id)}
                 prizeCount={prizeData.count}
                 prizeValue={prizeData.value}
@@ -226,13 +263,13 @@ const EventsTab: React.FC<EventsTabProps> = ({
         </div>
       )}
 
-      {/* Trust Warning Modal */}
+      {/* Error modal */}
       <AlertModal
-        isOpen={showTrustWarning}
-        title="Cannot Publish Event"
-        message={trustWarningMessage}
-        variant="warning"
-        onClose={() => setShowTrustWarning(false)}
+        isOpen={showErrorModal}
+        title={errorTitle}
+        message={errorMessage}
+        variant={errorVariant}
+        onClose={() => setShowErrorModal(false)}
         buttonText="Okay"
       />
     </div>

@@ -1,10 +1,29 @@
 import database from '../config/database.js';
 import config from '../config/environment.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getComputedEventStatus } from '../utils/helpers.js'; // ✅ IMPORT
 
 class EventService {
   constructor() {
     this.prefix = config.DB_TABLE_PREFIX;
+  }
+
+  /**
+   * ✅ HELPER: Add computed status to event object
+   */
+  _addComputedFields(event) {
+    if (!event) return null;
+    return {
+      ...event,
+      computed_status: getComputedEventStatus(event)
+    };
+  }
+
+  /**
+   * ✅ HELPER: Add computed status to array of events
+   */
+  _addComputedFieldsToArray(events) {
+    return events.map(event => this._addComputedFields(event));
   }
 
   async createEvent(clubId, eventData) {
@@ -37,11 +56,12 @@ class EventService {
     
     const eventId = uuidv4();
     
+    // Events are created as drafts by default (is_published = FALSE)
     const [result] = await database.connection.execute(
       `INSERT INTO ${this.prefix}events (
         id, club_id, campaign_id, title, type, description, venue, 
-        max_participants, goal_amount, event_date
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        max_participants, goal_amount, event_date, is_published
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
       [
         eventId, 
         clubId, 
@@ -62,7 +82,47 @@ class EventService {
       [eventId]
     );
 
-    return Array.isArray(rows) ? rows[0] : null;
+    // ✅ Add computed status
+    return this._addComputedFields(Array.isArray(rows) ? rows[0] : null);
+  }
+
+  /**
+   * Publish an event - makes it visible to the public
+   * Trust status should be checked before calling this method
+   */
+  async publishEvent(eventId, clubId) {
+    const [result] = await database.connection.execute(
+      `UPDATE ${this.prefix}events 
+       SET is_published = TRUE 
+       WHERE id = ? AND club_id = ?`,
+      [eventId, clubId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Event not found');
+    }
+
+    // Return the updated event (with computed status)
+    return await this.getEventById(eventId, clubId);
+  }
+
+  /**
+   * Unpublish an event - makes it a draft again
+   */
+  async unpublishEvent(eventId, clubId) {
+    const [result] = await database.connection.execute(
+      `UPDATE ${this.prefix}events 
+       SET is_published = FALSE 
+       WHERE id = ? AND club_id = ?`,
+      [eventId, clubId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Event not found');
+    }
+
+    // Return the updated event (with computed status)
+    return await this.getEventById(eventId, clubId);
   }
 
   async getEventsByClub(clubId) {
@@ -77,7 +137,29 @@ class EventService {
       [clubId]
     );
 
-    return rows || [];
+    // ✅ Add computed status to all events
+    return this._addComputedFieldsToArray(rows || []);
+  }
+
+  /**
+   * Get only published events for a club (for public pages)
+   */
+  async getPublishedEventsByClub(clubId) {
+    const [rows] = await database.connection.execute(
+      `SELECT 
+        e.*,
+        c.name as campaign_name
+      FROM ${this.prefix}events e
+      LEFT JOIN ${this.prefix}campaigns c ON e.campaign_id = c.id
+      WHERE e.club_id = ? 
+      AND e.is_published = TRUE
+      AND e.status != 'cancelled'
+      ORDER BY e.event_date DESC`,
+      [clubId]
+    );
+
+    // ✅ Add computed status to all events
+    return this._addComputedFieldsToArray(rows || []);
   }
 
   async getEventById(eventId, clubId) {
@@ -91,78 +173,81 @@ class EventService {
       [eventId, clubId]
     );
 
-    return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    // ✅ Add computed status
+    const event = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    return this._addComputedFields(event);
   }
 
   async updateEvent(eventId, clubId, updateData) {
-  // Handle campaign_id validation and null conversion
-  if (updateData.campaign_id !== undefined) {
-    // Convert empty string to null
-    if (updateData.campaign_id === '' || updateData.campaign_id === null) {
-      updateData.campaign_id = null;
-    } else {
-      // If campaign_id provided, verify it belongs to this club
-      const [campaignRows] = await database.connection.execute(
-        `SELECT club_id FROM ${this.prefix}campaigns WHERE id = ?`,
-        [updateData.campaign_id]
-      );
-      
-      if (!Array.isArray(campaignRows) || campaignRows.length === 0) {
-        throw new Error('Campaign not found');
-      }
-      
-      if (campaignRows[0].club_id !== clubId) {
-        throw new Error('Campaign does not belong to your club');
+    // Handle campaign_id validation and null conversion
+    if (updateData.campaign_id !== undefined) {
+      // Convert empty string to null
+      if (updateData.campaign_id === '' || updateData.campaign_id === null) {
+        updateData.campaign_id = null;
+      } else {
+        // If campaign_id provided, verify it belongs to this club
+        const [campaignRows] = await database.connection.execute(
+          `SELECT club_id FROM ${this.prefix}campaigns WHERE id = ?`,
+          [updateData.campaign_id]
+        );
+        
+        if (!Array.isArray(campaignRows) || campaignRows.length === 0) {
+          throw new Error('Campaign not found');
+        }
+        
+        if (campaignRows[0].club_id !== clubId) {
+          throw new Error('Campaign does not belong to your club');
+        }
       }
     }
+
+    // Build dynamic update query
+    const allowedFields = [
+      'title', 
+      'type', 
+      'description', 
+      'venue', 
+      'max_participants', 
+      'goal_amount', 
+      'actual_amount', 
+      'event_date', 
+      'status', 
+      'campaign_id',
+      'is_published' // Allow updating is_published
+    ];
+    
+    const updateFields = Object.keys(updateData).filter(key => 
+      allowedFields.includes(key) && updateData[key] !== undefined
+    );
+    
+    if (updateFields.length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const setClause = updateFields.map(field => `${field} = ?`).join(', ');
+    const values = updateFields.map(field => updateData[field]);
+    values.push(eventId, clubId);
+
+    console.log('📧 EventService: Updating event with:', {
+      eventId,
+      clubId,
+      updateFields,
+      campaign_id: updateData.campaign_id,
+      setClause
+    });
+
+    const [result] = await database.connection.execute(
+      `UPDATE ${this.prefix}events SET ${setClause} WHERE id = ? AND club_id = ?`,
+      values
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Event not found or no changes made');
+    }
+
+    // Return updated event (with computed status)
+    return await this.getEventById(eventId, clubId);
   }
-
-  // Build dynamic update query
-  const allowedFields = [
-    'title', 
-    'type', 
-    'description', 
-    'venue', 
-    'max_participants', 
-    'goal_amount', 
-    'actual_amount', 
-    'event_date', 
-    'status', 
-    'campaign_id'
-  ];
-  
-  const updateFields = Object.keys(updateData).filter(key => 
-    allowedFields.includes(key) && updateData[key] !== undefined
-  );
-  
-  if (updateFields.length === 0) {
-    throw new Error('No valid fields to update');
-  }
-
-  const setClause = updateFields.map(field => `${field} = ?`).join(', ');
-  const values = updateFields.map(field => updateData[field]);
-  values.push(eventId, clubId);
-
-  console.log('🔧 EventService: Updating event with:', {
-    eventId,
-    clubId,
-    updateFields,
-    campaign_id: updateData.campaign_id,
-    setClause
-  });
-
-  const [result] = await database.connection.execute(
-    `UPDATE ${this.prefix}events SET ${setClause} WHERE id = ? AND club_id = ?`,
-    values
-  );
-
-  if (result.affectedRows === 0) {
-    throw new Error('Event not found or no changes made');
-  }
-
-  // Return updated event
-  return await this.getEventById(eventId, clubId);
-}
 
   async deleteEvent(eventId, clubId) {
     // Check if event has associated data first
@@ -305,7 +390,8 @@ class EventService {
       [clubId, status]
     );
 
-    return rows || [];
+    // ✅ Add computed status to all events
+    return this._addComputedFieldsToArray(rows || []);
   }
 
   async getUpcomingEvents(clubId, limit = 5) {
@@ -321,7 +407,27 @@ class EventService {
       [clubId, limit]
     );
 
-    return rows || [];
+    // ✅ Add computed status to all events
+    return this._addComputedFieldsToArray(rows || []);
+  }
+
+  /**
+   * Get events by campaign
+   */
+  async getEventsByCampaign(campaignId, clubId) {
+    const [rows] = await database.connection.execute(
+      `SELECT 
+        e.*,
+        c.name as campaign_name
+      FROM ${this.prefix}events e
+      LEFT JOIN ${this.prefix}campaigns c ON e.campaign_id = c.id
+      WHERE e.campaign_id = ? AND e.club_id = ?
+      ORDER BY e.event_date DESC`,
+      [campaignId, clubId]
+    );
+
+    // ✅ Add computed status to all events
+    return this._addComputedFieldsToArray(rows || []);
   }
 }
 
