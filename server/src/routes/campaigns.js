@@ -1,30 +1,71 @@
+// server/src/routes/campaigns.js
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { validateRequired } from '../middleware/validation.js';
 import CampaignService from '../services/CampaignService.js';
+import EventService from '../services/EventService.js'; // ✅ needed for /campaigns/:id/events
 
 const router = express.Router();
 const campaignService = new CampaignService();
+const eventService = new EventService();
+
 const getSocketManager = (req) => req.app.get('socketManager');
 
+const VALID_CATEGORIES = [
+  'building',
+  'equipment',
+  'program',
+  'emergency',
+  'community',
+  'education',
+  'other',
+];
+
+const MAX_IMPACT_AREAS = 3;
+
+function validateImpactAreas(impact_area_ids) {
+  // allow undefined/null
+  if (impact_area_ids === undefined || impact_area_ids === null) return { ok: true };
+
+  if (!Array.isArray(impact_area_ids)) {
+    return { ok: false, error: 'impact_area_ids must be an array' };
+  }
+
+  if (impact_area_ids.length > MAX_IMPACT_AREAS) {
+    return { ok: false, error: `Select up to ${MAX_IMPACT_AREAS} impact areas` };
+  }
+
+  const invalid = impact_area_ids.find(
+    (id) => typeof id !== 'string' || id.trim().length === 0
+  );
+  if (invalid !== undefined) {
+    return { ok: false, error: 'impact_area_ids must be an array of non-empty strings' };
+  }
+
+  return { ok: true };
+}
+
 // Create a new campaign
-router.post('/api/campaigns', 
+router.post(
+  '/api/campaigns',
   authenticateToken,
-  validateRequired(['name', 'target_amount']), // Only require essential fields
+  validateRequired(['name', 'target_amount']),
   async (req, res) => {
     try {
-      const { 
-        name, 
-        description, 
+      const {
+        name,
+        description,
         target_amount,
         category,
         start_date,
         end_date,
-        tags 
+        tags,
+        impact_area_ids, // ✅ NEW
       } = req.body;
 
       // Validate target_amount is positive
-      if (target_amount <= 0) {
+      const parsedTarget = parseFloat(target_amount);
+      if (Number.isNaN(parsedTarget) || parsedTarget <= 0) {
         return res.status(400).json({ error: 'Target amount must be greater than 0' });
       }
 
@@ -37,43 +78,50 @@ router.post('/api/campaigns',
         }
       }
 
-      // Validate category if provided (optional validation)
-      const validCategories = [
-        'building', 'equipment', 'program', 'emergency', 
-        'community', 'education', 'other'
-      ];
-      if (category && !validCategories.includes(category)) {
-        return res.status(400).json({ 
-          error: `Invalid category. Must be one of: ${validCategories.join(', ')}` 
+      // Validate category if provided
+      if (category && !VALID_CATEGORIES.includes(category)) {
+        return res.status(400).json({
+          error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(', ')}`,
         });
       }
+
+      // Validate impact areas if provided
+      const ia = validateImpactAreas(impact_area_ids);
+      if (!ia.ok) {
+        return res.status(400).json({ error: ia.error });
+      }
+
+      // Normalize tags
+      const normalizedTags = Array.isArray(tags)
+        ? tags
+            .map((t) => (typeof t === 'string' ? t.trim() : ''))
+            .filter(Boolean)
+        : [];
 
       const campaignData = {
         name: name.trim(),
         description: description ? description.trim() : null,
-        target_amount: parseFloat(target_amount),
+        target_amount: parsedTarget,
         category: category ? category.trim() : null,
         start_date: start_date || null,
         end_date: end_date || null,
-        tags: tags || []
+        tags: normalizedTags,
+        impact_area_ids: Array.isArray(impact_area_ids)
+          ? impact_area_ids.map((id) => id.trim()).filter(Boolean)
+          : [], // ✅ NEW
       };
 
       const campaign = await campaignService.createCampaign(req.club_id, campaignData);
 
       const socketManager = getSocketManager(req);
-console.log('🔌 Socket manager:', socketManager ? 'Found' : 'Missing');
-if (socketManager && typeof socketManager.emitCampaignCreated === 'function') {
-  console.log('📢 Emitting campaign_created to club', req.club_id);
-  socketManager.emitCampaignCreated(req.club_id, campaign);
-} else {
-  console.log('❌ Socket manager or emitCampaignCreated method not available');
-}
+      if (socketManager && typeof socketManager.emitCampaignCreated === 'function') {
+        socketManager.emitCampaignCreated(req.club_id, campaign);
+      }
 
       res.status(201).json({
         message: 'Campaign created successfully',
-        campaign
+        campaign,
       });
-
     } catch (error) {
       console.error('Create campaign error:', error);
       res.status(500).json({ error: 'Failed to create campaign' });
@@ -82,172 +130,176 @@ if (socketManager && typeof socketManager.emitCampaignCreated === 'function') {
 );
 
 // Get all campaigns for a club
-router.get('/api/clubs/:clubId/campaigns',
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { clubId } = req.params;
-      const { category, status } = req.query;
+router.get('/api/clubs/:clubId/campaigns', authenticateToken, async (req, res) => {
+  try {
+    const { clubId } = req.params;
+    const { category, status } = req.query;
 
-      // Verify user belongs to this club
-      if (clubId !== req.club_id) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+    // Verify user belongs to this club
+    if (clubId !== req.club_id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
-      let campaigns = await campaignService.getCampaignsByClub(clubId);
+    let campaigns = await campaignService.getCampaignsByClub(clubId);
 
-      // Filter by category if provided
-      if (category) {
-        campaigns = campaigns.filter(campaign => 
-          campaign.category === category
+    // Filter by category if provided
+    if (category) {
+      campaigns = campaigns.filter((campaign) => campaign.category === category);
+    }
+
+    // Filter by status if provided (active/ended based on dates)
+    if (status) {
+      const now = new Date();
+      if (status === 'active') {
+        campaigns = campaigns.filter(
+          (campaign) => !campaign.end_date || new Date(campaign.end_date) >= now
+        );
+      } else if (status === 'ended') {
+        campaigns = campaigns.filter(
+          (campaign) => campaign.end_date && new Date(campaign.end_date) < now
         );
       }
-
-      // Filter by status if provided (active/ended based on dates)
-      if (status) {
-        const now = new Date();
-        if (status === 'active') {
-          campaigns = campaigns.filter(campaign => 
-            !campaign.end_date || new Date(campaign.end_date) >= now
-          );
-        } else if (status === 'ended') {
-          campaigns = campaigns.filter(campaign => 
-            campaign.end_date && new Date(campaign.end_date) < now
-          );
-        }
-      }
-
-      res.json({
-        campaigns,
-        total: campaigns.length
-      });
-
-    } catch (error) {
-      console.error('Get campaigns error:', error);
-      res.status(500).json({ error: 'Failed to fetch campaigns' });
     }
+
+    res.json({
+      campaigns,
+      total: campaigns.length,
+    });
+  } catch (error) {
+    console.error('Get campaigns error:', error);
+    res.status(500).json({ error: 'Failed to fetch campaigns' });
   }
-);
+});
 
 // Get a specific campaign with stats
-router.get('/api/campaigns/:campaignId',
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { campaignId } = req.params;
+router.get('/api/campaigns/:campaignId', authenticateToken, async (req, res) => {
+  try {
+    const { campaignId } = req.params;
 
-      const campaign = await campaignService.getCampaignStats(campaignId, req.club_id);
+    const campaign = await campaignService.getCampaignStats(campaignId, req.club_id);
 
-      if (!campaign) {
-        return res.status(404).json({ error: 'Campaign not found' });
-      }
-
-      res.json({ campaign });
-
-    } catch (error) {
-      console.error('Get campaign error:', error);
-      res.status(500).json({ error: 'Failed to fetch campaign' });
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
     }
+
+    res.json({ campaign });
+  } catch (error) {
+    console.error('Get campaign error:', error);
+    res.status(500).json({ error: 'Failed to fetch campaign' });
   }
-);
+});
 
 // Update a campaign
-router.put('/api/campaigns/:campaignId',
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { campaignId } = req.params;
-      const updateData = req.body;
+router.put('/api/campaigns/:campaignId', authenticateToken, async (req, res) => {
+  try {
+    const { campaignId } = req.params;
+    const updateData = { ...req.body };
 
-      // Validate target_amount if provided
-      if (updateData.target_amount !== undefined) {
-        if (updateData.target_amount <= 0) {
-          return res.status(400).json({ error: 'Target amount must be greater than 0' });
-        }
-        updateData.target_amount = parseFloat(updateData.target_amount);
+    // Validate target_amount if provided
+    if (updateData.target_amount !== undefined) {
+      const parsed = parseFloat(updateData.target_amount);
+      if (Number.isNaN(parsed) || parsed <= 0) {
+        return res.status(400).json({ error: 'Target amount must be greater than 0' });
       }
-
-      // Validate dates if both provided
-      if (updateData.start_date && updateData.end_date) {
-        const startDate = new Date(updateData.start_date);
-        const endDate = new Date(updateData.end_date);
-        if (endDate <= startDate) {
-          return res.status(400).json({ error: 'End date must be after start date' });
-        }
-      }
-
-      // Validate category if provided
-      const validCategories = [
-        'building', 'equipment', 'program', 'emergency', 
-        'community', 'education', 'other'
-      ];
-      if (updateData.category && !validCategories.includes(updateData.category)) {
-        return res.status(400).json({ 
-          error: `Invalid category. Must be one of: ${validCategories.join(', ')}` 
-        });
-      }
-
-      // Trim string fields
-      if (updateData.name) updateData.name = updateData.name.trim();
-      if (updateData.description) updateData.description = updateData.description.trim();
-      if (updateData.category) updateData.category = updateData.category.trim();
-
-      const campaign = await campaignService.updateCampaign(campaignId, req.club_id, updateData);
-
-      if (!campaign) {
-        return res.status(404).json({ error: 'Campaign not found or no changes made' });
-      }
-
-      const socketManager = getSocketManager(req);
-      socketManager.emitCampaignUpdated(req.club_id, campaign);
-
-      res.json({
-        message: 'Campaign updated successfully',
-        campaign
-      });
-
-    } catch (error) {
-      if (error.message === 'No valid fields to update') {
-        return res.status(400).json({ error: error.message });
-      }
-      
-      console.error('Update campaign error:', error);
-      res.status(500).json({ error: 'Failed to update campaign' });
+      updateData.target_amount = parsed;
     }
+
+    // Validate dates if both provided
+    if (updateData.start_date && updateData.end_date) {
+      const startDate = new Date(updateData.start_date);
+      const endDate = new Date(updateData.end_date);
+      if (endDate <= startDate) {
+        return res.status(400).json({ error: 'End date must be after start date' });
+      }
+    }
+
+    // Validate category if provided
+    if (updateData.category && !VALID_CATEGORIES.includes(updateData.category)) {
+      return res.status(400).json({
+        error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(', ')}`,
+      });
+    }
+
+    // Validate impact areas if provided
+    if (updateData.impact_area_ids !== undefined) {
+      const ia = validateImpactAreas(updateData.impact_area_ids);
+      if (!ia.ok) {
+        return res.status(400).json({ error: ia.error });
+      }
+      updateData.impact_area_ids = Array.isArray(updateData.impact_area_ids)
+        ? updateData.impact_area_ids.map((id) => id.trim()).filter(Boolean)
+        : [];
+    }
+
+    // Normalize tags if provided
+    if (updateData.tags !== undefined) {
+      updateData.tags = Array.isArray(updateData.tags)
+        ? updateData.tags
+            .map((t) => (typeof t === 'string' ? t.trim() : ''))
+            .filter(Boolean)
+        : [];
+    }
+
+    // Trim string fields
+    if (updateData.name) updateData.name = updateData.name.trim();
+    if (updateData.description) updateData.description = updateData.description.trim();
+    if (updateData.category) updateData.category = updateData.category.trim();
+
+    const campaign = await campaignService.updateCampaign(campaignId, req.club_id, updateData);
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found or no changes made' });
+    }
+
+    const socketManager = getSocketManager(req);
+    if (socketManager && typeof socketManager.emitCampaignUpdated === 'function') {
+      socketManager.emitCampaignUpdated(req.club_id, campaign);
+    }
+
+    res.json({
+      message: 'Campaign updated successfully',
+      campaign,
+    });
+  } catch (error) {
+    if (error.message === 'No valid fields to update') {
+      return res.status(400).json({ error: error.message });
+    }
+
+    console.error('Update campaign error:', error);
+    res.status(500).json({ error: 'Failed to update campaign' });
   }
-);
+});
 
 // Delete a campaign
-router.delete('/api/campaigns/:campaignId',
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { campaignId } = req.params;
+router.delete('/api/campaigns/:campaignId', authenticateToken, async (req, res) => {
+  try {
+    const { campaignId } = req.params;
 
-      const deleted = await campaignService.deleteCampaign(campaignId, req.club_id);
+    const deleted = await campaignService.deleteCampaign(campaignId, req.club_id);
 
-      if (!deleted) {
-        return res.status(404).json({ error: 'Campaign not found' });
-      }
-
-      const socketManager = getSocketManager(req);
-      socketManager.emitCampaignDeleted(req.club_id, campaignId);
-
-      res.json({ message: 'Campaign deleted successfully' });
-
-    } catch (error) {
-      if (error.message === 'Cannot delete campaign with associated events') {
-        return res.status(400).json({ error: error.message });
-      }
-      
-      console.error('Delete campaign error:', error);
-      res.status(500).json({ error: 'Failed to delete campaign' });
+    if (!deleted) {
+      return res.status(404).json({ error: 'Campaign not found' });
     }
+
+    const socketManager = getSocketManager(req);
+    if (socketManager && typeof socketManager.emitCampaignDeleted === 'function') {
+      socketManager.emitCampaignDeleted(req.club_id, campaignId);
+    }
+
+    res.json({ message: 'Campaign deleted successfully' });
+  } catch (error) {
+    if (error.message === 'Cannot delete campaign with associated events') {
+      return res.status(400).json({ error: error.message });
+    }
+
+    console.error('Delete campaign error:', error);
+    res.status(500).json({ error: 'Failed to delete campaign' });
   }
-);
+});
 
 // Get campaigns by category (additional endpoint for filtering)
-router.get('/api/clubs/:clubId/campaigns/category/:category',
+router.get(
+  '/api/clubs/:clubId/campaigns/category/:category',
   authenticateToken,
   async (req, res) => {
     try {
@@ -258,17 +310,20 @@ router.get('/api/clubs/:clubId/campaigns/category/:category',
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      if (!VALID_CATEGORIES.includes(category)) {
+        return res.status(400).json({
+          error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(', ')}`,
+        });
+      }
+
       const campaigns = await campaignService.getCampaignsByClub(clubId);
-      const filteredCampaigns = campaigns.filter(campaign => 
-        campaign.category === category
-      );
+      const filteredCampaigns = campaigns.filter((campaign) => campaign.category === category);
 
       res.json({
         campaigns: filteredCampaigns,
         total: filteredCampaigns.length,
-        category
+        category,
       });
-
     } catch (error) {
       console.error('Get campaigns by category error:', error);
       res.status(500).json({ error: 'Failed to fetch campaigns' });
@@ -277,24 +332,20 @@ router.get('/api/clubs/:clubId/campaigns/category/:category',
 );
 
 // GET /api/campaigns/:campaignId/events
-router.get('/api/campaigns/:campaignId/events',
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { campaignId } = req.params;
-      
-      // You can reuse your existing EventService method
-      const events = await eventService.getEventsByCampaign(campaignId, req.club_id);
-      
-      res.json({
-        events,
-        total: events.length
-      });
-    } catch (error) {
-      console.error('Get campaign events error:', error);
-      res.status(500).json({ error: 'Failed to fetch campaign events' });
-    }
+router.get('/api/campaigns/:campaignId/events', authenticateToken, async (req, res) => {
+  try {
+    const { campaignId } = req.params;
+
+    const events = await eventService.getEventsByCampaign(campaignId, req.club_id);
+
+    res.json({
+      events,
+      total: events.length,
+    });
+  } catch (error) {
+    console.error('Get campaign events error:', error);
+    res.status(500).json({ error: 'Failed to fetch campaign events' });
   }
-);
+});
 
 export default router;

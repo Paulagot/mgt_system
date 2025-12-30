@@ -1,4 +1,6 @@
 // client/src/components/dashboard/ClubDashboard.tsx
+// FIXES APPLIED: Added clubId props, null checks, and publish handlers
+
 import React, { useEffect, useRef, useState } from 'react';
 import DashboardHeader from './DashboardHeader';
 import DashboardTabs from './DashboardTabs';
@@ -18,9 +20,12 @@ import { useClubDashboard } from '../../hooks/useClubDashboard';
 import { useClubDashboardHandlers } from '../../hooks/useClubDashboardHandlers';
 import PrizeFinderTab from './PrizeFinderTab';
 import { Supporter } from '../../types/types';
-import EventExpenseManager from '../events/EventExpenseManager';
 import TaskManagement from '../users/TaskManagement';
-
+import ClubExpenseManager from '../financial/ClubExpenseManager';
+import ClubIncomeManager from '../financial/Clubincomemanager';
+import ClubImpactDashboard from '../impact/ClubImpactDashboard';
+import eventsService from '../../services/eventsServices'; // ADD THIS
+import campaignsService from '../../services/campaignsServices'; // ADD THIS
 
 export default function ClubDashboard() {
   const dashboard = useClubDashboard();
@@ -58,6 +63,54 @@ export default function ClubDashboard() {
     setSelectedSupporter: dashboard.setSelectedSupporter,
     setShowSupporterDetailPanel: dashboard.setShowSupporterDetailPanel,
   });
+
+  // ===== NEW: PUBLISH HANDLERS =====
+  
+  /**
+   * Handle publishing an event (trust check happens in backend)
+   */
+  const handlePublishEvent = async (eventId: string) => {
+    try {
+      console.log('📤 Publishing event:', eventId);
+      await eventsService.publishEvent(eventId);
+      
+      // Reload club data to get updated events
+      await dashboard.loadClubData();
+      
+      console.log('✅ Event published successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to publish event:', error);
+      // Re-throw so EventsTab can show error modal with trust warning
+      throw error;
+    }
+  };
+
+  /**
+   * Handle publishing a campaign (trust check happens in backend)
+   */
+  const handlePublishCampaign = async (campaignId: string) => {
+    try {
+      console.log('📤 Publishing campaign:', campaignId);
+      await campaignsService.publishCampaign(campaignId);
+      
+      // Reload club data to get updated campaigns
+      await dashboard.loadClubData();
+      
+      console.log('✅ Campaign published successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to publish campaign:', error);
+      // Re-throw so CampaignsTab can show error modal with trust warning
+      throw error;
+    }
+  };
+
+  // ===== END NEW HANDLERS =====
+
+  // Callback for when financial data changes
+  const handleFinancialDataChange = async () => {
+    console.log('Financial data changed, refreshing club data...');
+    await dashboard.loadClubData();
+  };
 
   // Wrapper for delete supporter that shows modal
   const handleDeleteSupporterClick = (supporter: Supporter) => {
@@ -124,8 +177,8 @@ export default function ClubDashboard() {
 
   
   React.useEffect(() => {
-  console.log('[ClubDashboard] isLoading:', isLoading, 'club:', club?.id, 'activeTab:', activeTab);
-}, [isLoading, club?.id, activeTab]);
+    console.log('[ClubDashboard] isLoading:', isLoading, 'club:', club?.id, 'activeTab:', activeTab);
+  }, [isLoading, club?.id, activeTab]);
 
   if (isLoading && !hasLoadedOnceRef.current) {
     return (
@@ -138,21 +191,19 @@ export default function ClubDashboard() {
     );
   }
 
-
-
   return (
     <div className="min-h-screen bg-gray-50">
- <DashboardHeader
-  clubName={club?.name}
-  userName={user?.name}
-  onNewEvent={() => dashboard.setShowCreateEventForm(true)}
-  onNewCampaign={() => dashboard.setShowCreateCampaignForm(true)}
-  onNewSupporter={() => dashboard.setShowCreateSupporterForm(true)}
-  onNewPrize={() => setActiveTab('prizes')}
-  onNewExpense={() => setActiveTab('expenses')}
-  onNewIncome={() => setActiveTab('income')}
-  onQuickTask={() => setActiveTab('tasks')}
-/>
+      <DashboardHeader
+        clubName={club?.name}
+        userName={user?.name}
+        onNewEvent={() => dashboard.setShowCreateEventForm(true)}
+        onNewCampaign={() => dashboard.setShowCreateCampaignForm(true)}
+        onNewSupporter={() => dashboard.setShowCreateSupporterForm(true)}
+        onNewPrize={() => setActiveTab('prizes')}
+        onNewExpense={() => setActiveTab('expenses')}
+        onNewIncome={() => setActiveTab('income')}
+        onQuickTask={() => setActiveTab('tasks')}
+      />
 
       <DashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -233,27 +284,32 @@ export default function ClubDashboard() {
             onEditCampaign={handlers.handleEditCampaign}
             onDeleteCampaign={handlers.handleDeleteCampaign}
             onViewCampaign={() => {}}
+            onNavigateToTab={setActiveTab} 
           />
         )}
 
         {activeTab === 'campaigns' && (
           <CampaignsTab
             campaigns={dashboard.campaigns}
+            clubId={club?.id || ''} // ✅ FIXED: Added clubId
             onCreateCampaign={() => dashboard.setShowCreateCampaignForm(true)}
             onEditCampaign={handlers.handleEditCampaign}
             onDeleteCampaign={handlers.handleDeleteCampaign}
             onViewCampaign={() => {}}
+            onPublishCampaign={handlePublishCampaign} // ✅ FIXED: Added publish handler
           />
         )}
 
         {activeTab === 'events' && (
           <EventsTab
             events={dashboard.events}
+            clubId={club?.id || ''} // ✅ FIXED: Added clubId
             getCampaignName={handlers.getCampaignName}
             onCreateEvent={() => dashboard.setShowCreateEventForm(true)}
             onEditEvent={handlers.handleEditEvent}
             onDeleteEvent={handlers.handleDeleteEvent}
             onViewEvent={() => {}}
+            onPublishEvent={handlePublishEvent} // ✅ FIXED: Added publish handler
             getPrizeDataForEvent={dashboard.getPrizeDataForEvent}
           />
         )}
@@ -272,44 +328,41 @@ export default function ClubDashboard() {
           />
         )}
 
-        {activeTab === 'income' && (
-  <div className="bg-white border border-gray-200 rounded-lg p-6">
-    <h2 className="text-lg font-semibold text-gray-900">Income Manager</h2>
-    <p className="mt-2 text-gray-600">
-      Coming soon. This will track income entries (tickets, donations, sponsorship, grants, etc.).
-    </p>
-  </div>
-)}
+        {activeTab === 'income' && club && (
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <ClubIncomeManager
+              clubId={club.id}
+              campaigns={dashboard.campaigns}
+              events={dashboard.events}
+              onDataChange={handleFinancialDataChange}
+            />
+          </div>
+        )}
 
-{activeTab === 'expenses' && (
-  <div>
-    <h2 className="text-xl font-bold text-gray-900 mb-4">Expense Manager</h2>
-    <p className="text-sm text-gray-600 mb-6">
-      (Temporary) Currently using the event-based expense manager component. We’ll wire this to real club/event data next.
-    </p>
+        {activeTab === 'expenses' && club && (
+          <div>
+            <ClubExpenseManager
+              clubId={club.id}
+              campaigns={dashboard.campaigns}
+              events={dashboard.events}
+              onDataChange={handleFinancialDataChange}
+            />
+          </div>
+        )}
 
-    {/* NOTE: your EventExpenseManager currently expects eventId/eventTitle/expenses handlers.
-       We can either:
-       1) keep using your existing mock for now (fast), or
-       2) refactor EventExpenseManager into a real ExpensesTab fed by API (next step).
-    */}
-    <EventExpenseManager
-      eventId="demo-event-1"
-      eventTitle="Demo Event"
-      expenses={[]}
-      onAddExpense={async () => alert('Hook up API next')}
-      onUpdateExpense={async () => alert('Hook up API next')}
-      onDeleteExpense={async () => alert('Hook up API next')}
-    />
-  </div>
-)}
+        {/* ✅ FIXED: Added null check for user */}
+        {activeTab === 'impact' && user && (
+          <ClubImpactDashboard 
+            clubId={user.club_id}
+            userRole={user.role}
+          />
+        )}
 
-{activeTab === 'tasks' && (
-  <div>
-    <TaskManagement />
-  </div>
-)}
-
+        {activeTab === 'tasks' && (
+          <div>
+            <TaskManagement />
+          </div>
+        )}
 
         {activeTab === 'prizes' && <PrizesTab events={dashboard.events} />}
 
@@ -317,7 +370,6 @@ export default function ClubDashboard() {
           <PrizeFinderTab
             clubId={club.id}
             clubName={club.name}
-            // ✅ still refreshes supporters, but no longer destroys PrizeFinderTab state
             onSupporterCreated={() => dashboard.loadClubData()}
           />
         )}

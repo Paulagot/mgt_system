@@ -102,6 +102,52 @@ router.get('/api/clubs/:clubId/income',
   }
 );
 
+// ===== CAMPAIGN-LEVEL INCOME ROUTES =====
+
+// Record income for a specific campaign
+router.post('/api/campaigns/:campaignId/income',
+  authenticateToken,
+  validateRequired(['source', 'description', 'amount', 'date']),
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const incomeData = { ...req.body, campaign_id: campaignId };
+
+      const income = await financialService.createIncome(req.club_id, incomeData);
+
+      const socketManager = getSocketManager(req);
+      socketManager.emitIncomeCreated(req.club_id, income);
+
+      res.status(201).json(income);
+    } catch (error) {
+      console.error('Create campaign income error:', error);
+      if (error.message === 'Campaign not found' || error.message === 'Access denied') {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Get all income for a specific campaign
+router.get('/api/campaigns/:campaignId/income',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      
+      const income = await financialService.getIncomeByCampaign(campaignId, req.club_id);
+      res.json(income);
+    } catch (error) {
+      console.error('Get campaign income error:', error);
+      if (error.message === 'Campaign not found' || error.message === 'Access denied') {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 // ===== INDIVIDUAL INCOME MANAGEMENT =====
 
 // Update income record

@@ -1,21 +1,44 @@
-import React, { useState, useEffect } from 'react';
+// client/src/components/campaigns/CreateCampaignForm.tsx
+import React, { useState, useEffect, useMemo } from 'react';
 import { Target, DollarSign, FileText, Save, X, Calendar } from 'lucide-react';
 import SuccessModal from '../shared/SuccessModal';
-import { Campaign } from '../../types/types';
+import type { Campaign, Club } from '../../types/types';
+import {
+  IMPACT_AREAS,
+  MAX_IMPACT_AREAS_PER_CAMPAIGN,
+  type EntityType,
+  type ImpactAreaId,
+} from '../../types/impactAreas';
 
 interface CreateCampaignFormProps {
-  onSubmit: (campaignData: any) => Promise<any>; // Now expects Promise for success handling
+  onSubmit: (campaignData: any) => Promise<any>;
   onCancel: () => void;
-  editMode?: boolean; // NEW: Optional edit mode
-  existingCampaign?: Campaign; // NEW: Optional existing campaign for editing
+  editMode?: boolean;
+  existingCampaign?: Campaign;
+  club?: Club;
 }
 
-export default function CreateCampaignForm({ 
-  onSubmit, 
-  onCancel, 
-  editMode = false, 
-  existingCampaign 
+const DESCRIPTION_MIN_SOFT = 50;
+const DESCRIPTION_RECOMMENDED_MIN = 300;
+const DESCRIPTION_RECOMMENDED_MAX = 800;
+const DESCRIPTION_MAX = 2500;
+
+export default function CreateCampaignForm({
+  onSubmit,
+  onCancel,
+  editMode = false,
+  existingCampaign,
+  club,
 }: CreateCampaignFormProps) {
+  const entityType: EntityType = (club?.entity_type as EntityType) ?? 'club';
+
+  const availableImpactAreas = useMemo(() => {
+    return IMPACT_AREAS
+      .filter((a) => a.entityTypes.includes(entityType))
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [entityType]);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -23,7 +46,8 @@ export default function CreateCampaignForm({
     start_date: '',
     end_date: '',
     category: '',
-    tags: ''
+    tags: '',
+    impact_area_ids: [] as ImpactAreaId[],
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -31,22 +55,29 @@ export default function CreateCampaignForm({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdCampaignName, setCreatedCampaignName] = useState('');
 
-  // NEW: Pre-populate form data when in edit mode
+  // Pre-populate form data when in edit mode
   useEffect(() => {
     if (editMode && existingCampaign) {
       console.log('🖊️ Pre-populating form with existing campaign data:', existingCampaign);
-      
-      // Format dates for input fields
+
       const formatDateForInput = (date: string | Date | undefined) => {
         if (!date) return '';
         const d = new Date(date);
-        return d.toISOString().split('T')[0]; // YYYY-MM-DD format
+        return d.toISOString().split('T')[0];
       };
 
-      // Format tags array to comma-separated string
       const formatTagsForInput = (tags: string[] | undefined) => {
         if (!tags || !Array.isArray(tags)) return '';
         return tags.join(', ');
+      };
+
+      const sanitizeImpactAreas = (ids: any): ImpactAreaId[] => {
+        if (!Array.isArray(ids)) return [];
+        const allowed = new Set(availableImpactAreas.map((a) => a.id));
+        return ids
+          .map((x) => (typeof x === 'string' ? x.trim() : ''))
+          .filter(Boolean)
+          .filter((x) => allowed.has(x as ImpactAreaId)) as ImpactAreaId[];
       };
 
       setFormData({
@@ -56,48 +87,93 @@ export default function CreateCampaignForm({
         start_date: formatDateForInput(existingCampaign.start_date),
         end_date: formatDateForInput(existingCampaign.end_date),
         category: existingCampaign.category || '',
-        tags: formatTagsForInput(existingCampaign.tags)
+        tags: formatTagsForInput(existingCampaign.tags),
+        impact_area_ids: sanitizeImpactAreas((existingCampaign as any).impact_area_ids),
       });
     }
-  }, [editMode, existingCampaign]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, existingCampaign, availableImpactAreas.length]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  // If entity type changes (or club loads late), ensure selected IDs still exist
+  useEffect(() => {
+    const allowed = new Set(availableImpactAreas.map((a) => a.id));
+    setFormData((prev) => {
+      const next = prev.impact_area_ids.filter((id) => allowed.has(id));
+      return next.length === prev.impact_area_ids.length ? prev : { ...prev, impact_area_ids: next };
+    });
+  }, [availableImpactAreas]);
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
-    
-    // Clear error when user starts typing
+
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [name]: ''
+        [name]: '',
       }));
     }
+  };
+
+  const toggleImpactArea = (id: ImpactAreaId) => {
+    setFormData((prev) => {
+      const selected = new Set(prev.impact_area_ids);
+
+      if (selected.has(id)) {
+        selected.delete(id);
+        if (errors.impact_area_ids) setErrors((e) => ({ ...e, impact_area_ids: '' }));
+        return { ...prev, impact_area_ids: Array.from(selected) };
+      }
+
+      if (selected.size >= MAX_IMPACT_AREAS_PER_CAMPAIGN) {
+        setErrors((e) => ({
+          ...e,
+          impact_area_ids: `Select up to ${MAX_IMPACT_AREAS_PER_CAMPAIGN} impact areas`,
+        }));
+        return prev;
+      }
+
+      selected.add(id);
+      if (errors.impact_area_ids) setErrors((e) => ({ ...e, impact_area_ids: '' }));
+      return { ...prev, impact_area_ids: Array.from(selected) };
+    });
   };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) {
-      newErrors.name = 'Campaign name is required';
-    }
-
-    if (!formData.description.trim()) {
-      newErrors.description = 'Campaign description is required';
-    }
+    if (!formData.name.trim()) newErrors.name = 'Campaign name is required';
+    if (!formData.description.trim()) newErrors.description = 'Campaign description is required';
 
     if (!formData.target_amount || parseFloat(formData.target_amount) <= 0) {
       newErrors.target_amount = 'Target amount must be greater than 0';
     }
 
+    // Impact Areas mandatory
+    if (formData.impact_area_ids.length < 1) {
+      newErrors.impact_area_ids = 'Please select at least 1 impact area';
+    } else if (formData.impact_area_ids.length > MAX_IMPACT_AREAS_PER_CAMPAIGN) {
+      newErrors.impact_area_ids = `Select up to ${MAX_IMPACT_AREAS_PER_CAMPAIGN} impact areas`;
+    }
+
+    // Timeline mandatory
+    if (!formData.start_date) newErrors.start_date = 'Start date is required';
+    if (!formData.end_date) newErrors.end_date = 'End date is required';
+
     if (formData.start_date && formData.end_date) {
       const startDate = new Date(formData.start_date);
       const endDate = new Date(formData.end_date);
-      if (endDate <= startDate) {
-        newErrors.end_date = 'End date must be after start date';
-      }
+      if (endDate <= startDate) newErrors.end_date = 'End date must be after start date';
+    }
+
+    // Hard max validation (defensive)
+    if (formData.description.length > DESCRIPTION_MAX) {
+      newErrors.description = `Description must be ${DESCRIPTION_MAX} characters or less`;
     }
 
     setErrors(newErrors);
@@ -106,52 +182,39 @@ export default function CreateCampaignForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setIsSubmitting(true);
-    
+
     try {
-      console.log(`📤 ${editMode ? 'Updating' : 'Creating'} campaign data to parent handler`);
-      
-      // Clean up form data before submitting (include all fields for backend)
       const cleanedData = {
         name: formData.name.trim(),
         description: formData.description.trim(),
-        target_amount: formData.target_amount, // Parent will convert to number
+        target_amount: formData.target_amount,
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        impact_area_ids: formData.impact_area_ids,
         category: formData.category.trim() || null,
-        start_date: formData.start_date || null,
-        end_date: formData.end_date || null,
-        tags: formData.tags ? formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : []
+        tags: formData.tags
+          ? formData.tags
+              .split(',')
+              .map((tag) => tag.trim())
+              .filter((tag) => tag)
+          : [],
       };
 
-      console.log(`🔄 Cleaned campaign data for ${editMode ? 'update' : 'create'}:`, cleanedData);
+      await onSubmit(cleanedData);
 
-      // Call parent's submit handler and wait for result
-      const result = await onSubmit(cleanedData);
-      
-      console.log(`✅ Campaign ${editMode ? 'updated' : 'created'} successfully, showing success modal`);
-      
-      // Store campaign name for success modal
       setCreatedCampaignName(formData.name.trim());
-      
-      // Show success modal instead of clearing immediately
       setShowSuccessModal(true);
-
     } catch (error) {
       console.error(`❌ Campaign form submission failed:`, error);
-      // Don't show success modal on error - let parent handle error display
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleSuccessConfirm = () => {
-    console.log(`🧹 User confirmed success, clearing form and closing`);
-    
-    // Clear form data only if creating (not editing)
     if (!editMode) {
       setFormData({
         name: '',
@@ -160,39 +223,41 @@ export default function CreateCampaignForm({
         start_date: '',
         end_date: '',
         category: '',
-        tags: ''
+        tags: '',
+        impact_area_ids: [],
       });
     }
-    
-    // Clear any errors
+
     setErrors({});
-    
-    // Hide success modal
     setShowSuccessModal(false);
-    
-    // Close the form
     onCancel();
   };
 
   const campaignCategories = [
-    { value: '', label: 'Select category...' },
+    { value: '', label: 'Select purpose...' },
     { value: 'building', label: 'Building & Infrastructure' },
     { value: 'equipment', label: 'Equipment & Supplies' },
     { value: 'program', label: 'Programs & Activities' },
     { value: 'emergency', label: 'Emergency Fund' },
     { value: 'community', label: 'Community Support' },
     { value: 'education', label: 'Education & Training' },
-    { value: 'other', label: 'Other' }
+    { value: 'other', label: 'Other' },
   ];
 
-  // Dynamic UI text based on mode
   const formTitle = editMode ? 'Edit Campaign' : 'Create New Campaign';
   const formSubtitle = editMode ? 'Update your campaign details' : 'Set up a fundraising goal for your club';
   const submitButtonText = editMode ? 'Update Campaign' : 'Create Campaign';
   const successTitle = editMode ? 'Campaign Updated Successfully!' : 'Campaign Created Successfully!';
-  const successMessage = editMode 
+  const successMessage = editMode
     ? `"${createdCampaignName}" has been updated successfully.`
     : `"${createdCampaignName}" has been created and saved. You can now start planning events for this campaign.`;
+
+  const descriptionPlaceholder =
+    'What are you raising money for, and why does it matter?\n\n' +
+    '• What will the funds be used for?\n' +
+    '• Who will benefit?\n' +
+    '• What change do you expect to see?\n' +
+    '• Any key milestones or timeline?';
 
   return (
     <>
@@ -210,11 +275,7 @@ export default function CreateCampaignForm({
                   <p className="text-sm text-gray-600">{formSubtitle}</p>
                 </div>
               </div>
-              <button
-                onClick={onCancel}
-                className="text-gray-400 hover:text-gray-600"
-                disabled={isSubmitting}
-              >
+              <button onClick={onCancel} className="text-gray-400 hover:text-gray-600" disabled={isSubmitting}>
                 <X className="h-6 w-6" />
               </button>
             </div>
@@ -244,56 +305,71 @@ export default function CreateCampaignForm({
               {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
             </div>
 
-            {/* Target Amount and Category */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="target_amount" className="block text-sm font-medium text-gray-700 mb-1">
-                  Target Amount *
-                </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                  <input
-                    type="number"
-                    id="target_amount"
-                    name="target_amount"
-                    value={formData.target_amount}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                    className={`w-full pl-10 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 ${
-                      editMode ? 'focus:ring-blue-500' : 'focus:ring-green-500'
-                    } ${
-                      errors.target_amount ? 'border-red-300 focus:border-red-500' : `border-gray-300 ${editMode ? 'focus:border-blue-500' : 'focus:border-green-500'}`
-                    } ${isSubmitting ? 'bg-gray-50' : ''}`}
-                    placeholder="10000.00"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-                {errors.target_amount && <p className="mt-1 text-sm text-red-600">{errors.target_amount}</p>}
-              </div>
-
-              <div>
-                <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
-                </label>
-                <select
-                  id="category"
-                  name="category"
-                  value={formData.category}
+            {/* Target Amount */}
+            <div>
+              <label htmlFor="target_amount" className="block text-sm font-medium text-gray-700 mb-1">
+                Target Amount *
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                <input
+                  type="number"
+                  id="target_amount"
+                  name="target_amount"
+                  value={formData.target_amount}
                   onChange={handleInputChange}
                   disabled={isSubmitting}
-                  className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 ${
-                    editMode ? 'focus:ring-blue-500 focus:border-blue-500' : 'focus:ring-green-500 focus:border-green-500'
+                  className={`w-full pl-10 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 ${
+                    editMode ? 'focus:ring-blue-500' : 'focus:ring-green-500'
                   } ${
-                    isSubmitting ? 'bg-gray-50' : ''
-                  }`}
-                >
-                  {campaignCategories.map((category) => (
-                    <option key={category.value} value={category.value}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
+                    errors.target_amount ? 'border-red-300 focus:border-red-500' : `border-gray-300 ${editMode ? 'focus:border-blue-500' : 'focus:border-green-500'}`
+                  } ${isSubmitting ? 'bg-gray-50' : ''}`}
+                  placeholder="10000.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              {errors.target_amount && <p className="mt-1 text-sm text-red-600">{errors.target_amount}</p>}
+            </div>
+
+            {/* Impact Areas (Required) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Impact Areas *
+              </label>
+              <p className="text-sm text-gray-500 mb-3">
+                Choose at least 1 (up to {MAX_IMPACT_AREAS_PER_CAMPAIGN}). This helps supporters understand your impact and enables reporting.
+              </p>
+
+              {errors.impact_area_ids && <p className="mb-2 text-sm text-red-600">{errors.impact_area_ids}</p>}
+
+              <div className="flex flex-wrap gap-2">
+                {availableImpactAreas.map((area) => {
+                  const selected = formData.impact_area_ids.includes(area.id);
+                  return (
+                    <button
+                      key={area.id}
+                      type="button"
+                      onClick={() => toggleImpactArea(area.id)}
+                      disabled={isSubmitting}
+                      className={`px-3 py-2 rounded-full border text-sm text-left transition ${
+                        selected
+                          ? editMode
+                            ? 'border-blue-300 bg-blue-50 text-blue-800'
+                            : 'border-green-300 bg-green-50 text-green-800'
+                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                      } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={area.description}
+                    >
+                      {area.label}
+                      <span className="ml-2 text-xs text-gray-500">SDG {area.sdgGoals.join(',')}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-2 text-sm text-gray-600">
+                Selected: {formData.impact_area_ids.length}/{MAX_IMPACT_AREAS_PER_CAMPAIGN}
               </div>
             </div>
 
@@ -309,29 +385,51 @@ export default function CreateCampaignForm({
                   value={formData.description}
                   onChange={handleInputChange}
                   disabled={isSubmitting}
-                  rows={4}
+                  rows={6}
+                  maxLength={DESCRIPTION_MAX}
                   className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 ${
                     editMode ? 'focus:ring-blue-500' : 'focus:ring-green-500'
                   } ${
-                    errors.description ? 'border-red-300 focus:border-red-500' : `border-gray-300 ${editMode ? 'focus:border-blue-500' : 'focus:border-green-500'}`
+                    errors.description
+                      ? 'border-red-300 focus:border-red-500'
+                      : `border-gray-300 ${editMode ? 'focus:border-blue-500' : 'focus:border-green-500'}`
                   } ${isSubmitting ? 'bg-gray-50' : ''}`}
-                  placeholder="Describe what this campaign aims to achieve and why it's important to your community..."
+                  placeholder={descriptionPlaceholder}
                 />
                 <FileText className="absolute right-3 top-3 h-5 w-5 text-gray-400" />
               </div>
+
               {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description}</p>}
-              <p className="mt-1 text-sm text-gray-500">
-                Provide details about your goals, how funds will be used, and expected impact.
-              </p>
+
+              <div className="mt-1 flex justify-between text-sm">
+                <div className="text-gray-500">
+                  Recommended length: {DESCRIPTION_RECOMMENDED_MIN}–{DESCRIPTION_RECOMMENDED_MAX} characters
+                </div>
+                <div
+                  className={`${
+                    formData.description.length > 0 && formData.description.length < DESCRIPTION_MIN_SOFT
+                      ? 'text-amber-600'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  {formData.description.length} / {DESCRIPTION_MAX}
+                </div>
+              </div>
+
+              {formData.description.length > 0 && formData.description.length < DESCRIPTION_MIN_SOFT && (
+                <p className="mt-1 text-sm text-amber-600">
+                  Consider adding more detail — descriptions under {DESCRIPTION_MIN_SOFT} characters tend to perform poorly on public pages.
+                </p>
+              )}
             </div>
 
-            {/* Timeline (Optional) */}
+            {/* Timeline (Required) */}
             <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Campaign Timeline (Optional)</h3>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Campaign Timeline *</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="start_date" className="block text-sm font-medium text-gray-600 mb-1">
-                    Start Date
+                    Start Date *
                   </label>
                   <div className="relative">
                     <input
@@ -341,19 +439,20 @@ export default function CreateCampaignForm({
                       value={formData.start_date}
                       onChange={handleInputChange}
                       disabled={isSubmitting}
-                      className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 ${
+                      className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 ${
                         editMode ? 'focus:ring-blue-500 focus:border-blue-500' : 'focus:ring-green-500 focus:border-green-500'
-                      } ${
+                      } ${errors.start_date ? 'border-red-300 focus:border-red-500' : 'border-gray-300'} ${
                         isSubmitting ? 'bg-gray-50' : ''
                       }`}
                     />
                     <Calendar className="absolute right-3 top-2.5 h-5 w-5 text-gray-400 pointer-events-none" />
                   </div>
+                  {errors.start_date && <p className="mt-1 text-sm text-red-600">{errors.start_date}</p>}
                 </div>
 
                 <div>
                   <label htmlFor="end_date" className="block text-sm font-medium text-gray-600 mb-1">
-                    Target End Date
+                    End Date *
                   </label>
                   <div className="relative">
                     <input
@@ -364,10 +463,10 @@ export default function CreateCampaignForm({
                       onChange={handleInputChange}
                       disabled={isSubmitting}
                       className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 ${
-                        editMode ? 'focus:ring-blue-500' : 'focus:ring-green-500'
-                      } ${
-                        errors.end_date ? 'border-red-300 focus:border-red-500' : `border-gray-300 ${editMode ? 'focus:border-blue-500' : 'focus:border-green-500'}`
-                      } ${isSubmitting ? 'bg-gray-50' : ''}`}
+                        editMode ? 'focus:ring-blue-500 focus:border-blue-500' : 'focus:ring-green-500 focus:border-green-500'
+                      } ${errors.end_date ? 'border-red-300 focus:border-red-500' : 'border-gray-300'} ${
+                        isSubmitting ? 'bg-gray-50' : ''
+                      }`}
                     />
                     <Calendar className="absolute right-3 top-2.5 h-5 w-5 text-gray-400 pointer-events-none" />
                   </div>
@@ -376,31 +475,59 @@ export default function CreateCampaignForm({
               </div>
             </div>
 
-            {/* Tags */}
-            <div>
-              <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">
-                Tags
-              </label>
-              <input
-                type="text"
-                id="tags"
-                name="tags"
-                value={formData.tags}
-                onChange={handleInputChange}
-                disabled={isSubmitting}
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 ${
-                  editMode ? 'focus:ring-blue-500 focus:border-blue-500' : 'focus:ring-green-500 focus:border-green-500'
-                } ${
-                  isSubmitting ? 'bg-gray-50' : ''
-                }`}
-                placeholder="e.g., renovation, community, urgent"
-              />
-              <p className="mt-1 text-sm text-gray-500">
-                Separate tags with commas. These help organize and filter your campaigns.
-              </p>
+            {/* Optional Details */}
+            <div className="pt-2 border-t border-gray-200">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Optional Details</h3>
+
+              {/* Purpose */}
+              <div className="mb-4">
+                <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
+                  Campaign Purpose (Optional)
+                </label>
+                <select
+                  id="category"
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  disabled={isSubmitting}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 ${
+                    editMode ? 'focus:ring-blue-500 focus:border-blue-500' : 'focus:ring-green-500 focus:border-green-500'
+                  } ${isSubmitting ? 'bg-gray-50' : ''}`}
+                >
+                  {campaignCategories.map((category) => (
+                    <option key={category.value} value={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-sm text-gray-500">
+                  Helps internal reporting (e.g., equipment, facilities, programme costs).
+                </p>
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">
+                  Tags (Optional)
+                </label>
+                <input
+                  type="text"
+                  id="tags"
+                  name="tags"
+                  value={formData.tags}
+                  onChange={handleInputChange}
+                  disabled={isSubmitting}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 ${
+                    editMode ? 'focus:ring-blue-500 focus:border-blue-500' : 'focus:ring-green-500 focus:border-green-500'
+                  } ${isSubmitting ? 'bg-gray-50' : ''}`}
+                  placeholder="e.g., renovation, community, urgent"
+                />
+                <p className="mt-1 text-sm text-gray-500">
+                  Separate tags with commas. These help organize and filter your campaigns.
+                </p>
+              </div>
             </div>
 
-            {/* Campaign Tips - Only show when creating */}
             {!editMode && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="text-sm font-medium text-blue-800 mb-2">💡 Campaign Tips</h4>
@@ -427,9 +554,7 @@ export default function CreateCampaignForm({
                 type="submit"
                 disabled={isSubmitting}
                 className={`px-4 py-2 text-sm font-medium text-white border border-transparent rounded-md focus:outline-none focus:ring-2 flex items-center disabled:opacity-50 ${
-                  editMode 
-                    ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500' 
-                    : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                  editMode ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500' : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
                 }`}
               >
                 <Save className="h-4 w-4 mr-2" />
@@ -453,8 +578,9 @@ export default function CreateCampaignForm({
         title={successTitle}
         message={successMessage}
         onConfirm={handleSuccessConfirm}
-        color={editMode ? "blue" : "green"}
+        color={editMode ? 'blue' : 'green'}
       />
     </>
   );
 }
+

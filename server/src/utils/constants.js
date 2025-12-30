@@ -39,6 +39,7 @@ export const EXPENSE_PAYMENT_METHODS = {
   CARD: 'card',
   TRANSFER: 'transfer',
   CHEQUE: 'cheque',
+  INSTANT: 'instant',
   OTHER: 'other'
 };
 
@@ -47,9 +48,7 @@ export const INCOME_PAYMENT_METHODS = {
   CASH: 'cash',
   CARD: 'card',
   TRANSFER: 'transfer',
-  SPONSORSHIP: 'sponsorship',
-  DONATION: 'donation',
-  TICKET_SALES: 'ticket_sales',
+  INSTANT: 'instant',
   OTHER: 'other'
 };
 

@@ -8,6 +8,8 @@ export interface Club {
   email: string;
   password_hash?: string;
   created_at: string;
+  entity_type?: EntityType;
+
 }
 
 export interface Campaign {
@@ -16,6 +18,10 @@ export interface Campaign {
   name: string;
   description?: string;
   target_amount: number;
+  actual_amount?: number;         // ADD THIS LINE - calculated from income
+  total_expenses?: number;        // ADD THIS LINE - calculated from expenses
+  net_profit?: number;            // ADD THIS LINE - calculated
+  overhead_allocation?: number;   // ADD THIS LINE - for accountant allocations
   status?: 'draft' | 'active' | 'completed' | 'paused';
   category?: string;
   start_date?: string;
@@ -27,13 +33,14 @@ export interface Campaign {
   progress_percentage?: number;
   total_participants?: number;
   total_supporters?: number;
-  total_expenses?: number;
   total_prizes?: number;
   total_tasks?: number;
   total_income?: number;
   total_donations?: number;
   total_sponsors?: number;
   created_at: string;
+  impact_area_ids?: string[];
+  is_published?: boolean;
 }
 
 export interface Event {
@@ -53,6 +60,128 @@ export interface Event {
   status: 'draft' | 'live' | 'ended';
   created_at: string;
   campaign_name?: string;
+   overhead_allocation?: number;
+   is_published?: boolean;
+}
+
+// ===== onboarding & TRUST =====
+// Entity type enum
+export enum EntityType {
+  CLUB = 'club',
+  CHARITY = 'charity',
+  SCHOOL = 'school',
+  COMMUNITY_GROUP = 'community_group',
+  CAUSE = 'cause'
+}
+
+// Onboarding status
+export enum OnboardingStatus {
+  DRAFT = 'draft',
+  ENTITY_SETUP = 'entity_setup',
+  PENDING_VERIFICATION = 'pending_verification',
+  VERIFIED = 'verified',
+  SUSPENDED = 'suspended'
+}
+
+// Legal structure
+export enum LegalStructure {
+  UNINCORPORATED_ASSOCIATION = 'unincorporated_association',
+  COMPANY_LIMITED_BY_GUARANTEE = 'company_limited_by_guarantee',
+  CHARITABLE_TRUST = 'charitable_trust',
+  COMMUNITY_INTEREST_COMPANY = 'community_interest_company',
+  OTHER = 'other'
+}
+
+// Country enum
+export enum Country {
+  IRELAND = 'IE',
+  UK = 'GB'
+}
+
+// Main entity details interface
+export interface EntityDetails {
+  id: string;
+  clubId: string;
+  
+  // Basic info
+  legalName: string;
+  tradingNames?: string[]; // Stored as JSON in DB
+  description?: string;
+  foundedYear?: number;
+  
+  // Address
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  countyState?: string;
+  postalCode?: string;
+  country: Country;
+  
+  // Ireland registrations
+  ieCroNumber?: string;
+  ieCharityChyNumber?: string;
+  ieCharityRcn?: string;
+  ieRevenueSportsBody: boolean;
+  
+  // UK registrations
+  ukCompanyNumber?: string;
+  ukCharityEnglandWales?: string;
+  ukCharityScotland?: string;
+  ukCharityNi?: string;
+  ukCascRegistered: boolean;
+  
+  // Structure
+  legalStructure: LegalStructure;
+  isRegisteredCharity: boolean;
+  isRegisteredCompany: boolean;
+  
+  // Verification
+  registrationVerified: boolean;
+  verificationNotes?: string;
+  verifiedAt?: Date;
+  verifiedBy?: string;
+  
+  // Audit
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Form data interfaces for frontend
+export interface EntitySetupFormData {
+  // Step 1: Basic Info
+  legalName: string;
+  tradingNames: string[];
+  description: string;
+  foundedYear: number;
+  
+  // Step 2: Address
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  countyState: string;
+  postalCode: string;
+  country: Country;
+  
+  // Step 3: Legal Structure
+  legalStructure: LegalStructure;
+  
+  // Step 4: Registration Details (conditional based on country)
+  registrationDetails: IrelandRegistration | UKRegistration;
+}
+
+export interface IrelandRegistration {
+  croNumber?: string;
+  charityChyNumber?: string;
+  charityRcn?: string;
+  revenueSportsBody: boolean;
+}
+
+export interface UKRegistration {
+  companyNumber?: string;
+  charityEnglandWales?: string;
+  charityScotland?: string;
+  charityNi?: string;
+  cascRegistered: boolean;
 }
 
 // ===== SUPPORTER & CRM SYSTEM =====
@@ -333,6 +462,7 @@ export interface Expense {
   id: string;
   club_id: string;
   event_id?: string;
+   campaign_id?: string;
   category: string;
   description: string;
   amount: number;
@@ -353,9 +483,10 @@ export interface Income {
   description: string;
   amount: number;
   date: string;
-  payment_method: 'cash' | 'card' | 'transfer' | 'sponsorship' | 'donation' | 'ticket_sales' | 'other';
+  payment_method: 'cash' | 'card' | 'transfer' | 'sponsorship' | 'donation' | 'ticket_sales' |  'other';
   reference?: string;
   created_at: string;
+  campaign_id?: string; 
 }
 
 export interface FinancialSummary {
@@ -411,6 +542,7 @@ export interface CreateExpenseForm {
   payment_method: 'cash' | 'card' | 'transfer' | 'cheque' | 'other';
   receipt_url?: string;
   event_id?: string;
+  campaign_id?: string;  
 }
 
 export interface CreateIncomeForm {
@@ -418,9 +550,11 @@ export interface CreateIncomeForm {
   description: string;
   amount: number;
   date: string;
-  payment_method: 'cash' | 'card' | 'transfer' | 'sponsorship' | 'donation' | 'ticket_sales' | 'other';
+  payment_method: 'cash' | 'card' | 'transfer' | 'sponsorship' | 'donation' | 'ticket_sales' | 'allocated-funds' |'other';
   reference?: string;
   event_id?: string;
+    campaign_id?: string;  // ADD THIS LINE
+  supporter_id?: string;
 }
 
 export interface CreatePrizeForm {

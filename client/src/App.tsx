@@ -13,7 +13,7 @@ import {
 import ClubDashboard from "./components/dashboard/ClubDashboard";
 import CreateEventForm from "./components/events/CreateEventForm";
 import CreateCampaignForm from "./components/campaigns/CreateCampaignForm";
-import EventExpenseManager from "./components/events/EventExpenseManager";
+import EventExpenseManager from "./components/financial/EventExpenseManager";
 import AuthPage from "./components/auth/AuthPage";
 import AuthGuard from "./components/auth/AuthGuard";
 
@@ -22,6 +22,12 @@ import AppShell from "./components/layout/AppShell";
 import UserManagement from "./components/users/UserManagement";
 import PrizeManagement from "./components/prizes/PrizeManagement";
 import TaskManagement from "./components/users/TaskManagement";
+
+
+import EntitySetupDashboard from './components/entity/Entitysetupdashboard';
+import EntitySetupFlow from "./components/entity/Entitysetupflow";
+import VerificationStatus from "./components/entity/Verificationstatus";
+import ChangeEntityType from "./components/entity/Changeentitytype";
 
 import { useAuth } from "./store/app_store";
 import { apiService } from "./services/apiService";
@@ -514,6 +520,11 @@ function App() {
               </AuthGuard>
             }
           />
+
+         <Route path="/entity-setup" element={<EntitySetupFlow />} />
+<Route path="/entity-setup/dashboard" element={<EntitySetupDashboard />} />
+<Route path="/verification-status" element={<VerificationStatus />} />
+<Route path="/entity-setup/change-type" element={<ChangeEntityType />} />
 
           <Route
             path="/create-campaign"
