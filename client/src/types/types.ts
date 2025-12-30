@@ -58,6 +58,7 @@ export interface Event {
   net_profit?: number;
   event_date: string;
   status: 'draft' | 'live' | 'ended';
+  computed_status?: 'draft' | 'scheduled' | 'live' | 'ended' | 'today';
   created_at: string;
   campaign_name?: string;
    overhead_allocation?: number;

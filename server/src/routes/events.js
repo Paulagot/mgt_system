@@ -2,6 +2,8 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { validateRequired } from '../middleware/validation.js';
 import EventService from '../services/EventService.js';
+import ImpactService from '../services/ImpactService.js';
+import CampaignService from '../services/CampaignService.js'; // ✅ NEW
 import { 
   VALID_EVENT_TYPES, 
   VALID_EVENT_STATUSES,
@@ -10,9 +12,11 @@ import {
 
 const router = express.Router();
 const eventService = new EventService();
+const impactService = new ImpactService();
+const campaignService = new CampaignService(); // ✅ NEW
 const getSocketManager = (req) => req.app.get('socketManager');
 
-// Create a new event
+// Create a new event (as draft)
 router.post('/api/events', 
   authenticateToken,
   validateRequired(['title', 'type', 'goal_amount', 'event_date']),
@@ -29,19 +33,16 @@ router.post('/api/events',
         campaign_id 
       } = req.body;
 
-      // Validate event type
       if (!VALID_EVENT_TYPES.includes(type)) {
         return res.status(400).json({ 
           error: `Invalid event type. Must be one of: ${VALID_EVENT_TYPES.join(', ')}` 
         });
       }
 
-      // Validate goal_amount is positive
       if (goal_amount <= 0) {
         return res.status(400).json({ error: 'Goal amount must be greater than 0' });
       }
 
-      // Validate event_date is not in the past
       const eventDate = new Date(event_date);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -63,11 +64,11 @@ router.post('/api/events',
 
       const event = await eventService.createEvent(req.club_id, eventData);
 
-const socketManager = getSocketManager(req);
-     socketManager.emitEventCreated(req.club_id, event);
+      const socketManager = getSocketManager(req);
+      socketManager.emitEventCreated(req.club_id, event);
 
       res.status(201).json({
-        message: 'Event created successfully',
+        message: 'Event created as draft successfully',
         event
       });
 
@@ -85,6 +86,103 @@ const socketManager = getSocketManager(req);
   }
 );
 
+// ✅ UPDATED: Publish an event with campaign AND trust checking
+router.patch('/api/events/:eventId/publish', 
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { eventId } = req.params;
+      const clubId = req.club_id;
+
+      // 1. Get the event
+      const event = await eventService.getEventById(eventId, clubId);
+      
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // 2. ✅ NEW: If event belongs to a campaign, check if campaign is published
+      if (event.campaign_id) {
+        const campaign = await campaignService.getCampaignById(event.campaign_id, clubId);
+        
+        if (!campaign) {
+          return res.status(404).json({ error: 'Campaign not found' });
+        }
+
+        // Check if campaign is published
+        if (!campaign.is_published) {
+          return res.status(403).json({ 
+            error: 'Cannot publish event',
+            reason: 'Campaign must be published first',
+            message: `This event is part of "${campaign.name}" campaign. Please publish the campaign before publishing this event.`,
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            requiresCampaignPublish: true
+          });
+        }
+      }
+
+      // 3. Check trust status
+      const trustStatus = await impactService.checkTrustStatus(clubId);
+      
+      if (!trustStatus.canCreateEvent) {
+        return res.status(403).json({ 
+          error: 'Cannot publish event',
+          reason: trustStatus.reason,
+          message: trustStatus.reason,
+          outstanding: trustStatus.outstandingImpactReports,
+          overdueDays: trustStatus.overdueDays,
+          requiresTrustFix: true
+        });
+      }
+
+      // 4. Publish the event
+      const publishedEvent = await eventService.publishEvent(eventId, clubId);
+
+      const socketManager = getSocketManager(req);
+      socketManager.emitEventUpdated(clubId, publishedEvent);
+
+      res.json({
+        message: 'Event published successfully',
+        event: publishedEvent
+      });
+
+    } catch (error) {
+      console.error('Publish event error:', error);
+      res.status(500).json({ error: 'Failed to publish event' });
+    }
+  }
+);
+
+// Unpublish an event (make it draft again)
+router.patch('/api/events/:eventId/unpublish', 
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { eventId } = req.params;
+      const clubId = req.club_id;
+
+      const event = await eventService.unpublishEvent(eventId, clubId);
+
+      const socketManager = getSocketManager(req);
+      socketManager.emitEventUpdated(clubId, event);
+
+      res.json({
+        message: 'Event unpublished successfully',
+        event
+      });
+
+    } catch (error) {
+      if (error.message === 'Event not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      
+      console.error('Unpublish event error:', error);
+      res.status(500).json({ error: 'Failed to unpublish event' });
+    }
+  }
+);
+
 // Get all events for a club
 router.get('/api/clubs/:clubId/events',
   authenticateToken,
@@ -93,7 +191,6 @@ router.get('/api/clubs/:clubId/events',
       const { clubId } = req.params;
       const { status } = req.query;
 
-      // Verify user belongs to this club
       if (clubId !== req.club_id) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -117,6 +214,26 @@ router.get('/api/clubs/:clubId/events',
   }
 );
 
+// Get published events for a club (for public pages)
+router.get('/api/clubs/:clubId/events/published',
+  async (req, res) => {
+    try {
+      const { clubId } = req.params;
+
+      const events = await eventService.getPublishedEventsByClub(clubId);
+
+      res.json({
+        events,
+        total: events.length
+      });
+
+    } catch (error) {
+      console.error('Get published events error:', error);
+      res.status(500).json({ error: 'Failed to fetch published events' });
+    }
+  }
+);
+
 // Get upcoming events for a club
 router.get('/api/clubs/:clubId/events/upcoming',
   authenticateToken,
@@ -125,7 +242,6 @@ router.get('/api/clubs/:clubId/events/upcoming',
       const { clubId } = req.params;
       const { limit = 5 } = req.query;
 
-      // Verify user belongs to this club
       if (clubId !== req.club_id) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -196,21 +312,18 @@ router.put('/api/events/:eventId',
       const { eventId } = req.params;
       const updateData = req.body;
 
-      // Validate event type if provided
       if (updateData.type && !VALID_EVENT_TYPES.includes(updateData.type)) {
         return res.status(400).json({ 
           error: `Invalid event type. Must be one of: ${VALID_EVENT_TYPES.join(', ')}` 
         });
       }
 
-      // Validate status if provided
       if (updateData.status && !VALID_EVENT_STATUSES.includes(updateData.status)) {
         return res.status(400).json({ 
           error: `Invalid status. Must be one of: ${VALID_EVENT_STATUSES.join(', ')}` 
         });
       }
 
-      // Validate goal_amount if provided
       if (updateData.goal_amount !== undefined) {
         if (updateData.goal_amount <= 0) {
           return res.status(400).json({ error: 'Goal amount must be greater than 0' });
@@ -218,7 +331,6 @@ router.put('/api/events/:eventId',
         updateData.goal_amount = parseFloat(updateData.goal_amount);
       }
 
-      // Validate actual_amount if provided
       if (updateData.actual_amount !== undefined) {
         if (updateData.actual_amount < 0) {
           return res.status(400).json({ error: 'Actual amount cannot be negative' });
@@ -226,7 +338,6 @@ router.put('/api/events/:eventId',
         updateData.actual_amount = parseFloat(updateData.actual_amount);
       }
 
-      // Validate event_date if provided
       if (updateData.event_date) {
         const eventDate = new Date(updateData.event_date);
         const today = new Date();
@@ -237,29 +348,28 @@ router.put('/api/events/:eventId',
         }
       }
 
-      // Trim string fields
       if (updateData.title) updateData.title = updateData.title.trim();
       if (updateData.description) updateData.description = updateData.description.trim();
       if (updateData.venue) updateData.venue = updateData.venue.trim();
 
-      // Parse numeric fields
       if (updateData.max_participants) updateData.max_participants = parseInt(updateData.max_participants);
 
       if (updateData.campaign_id !== undefined) {
-  if (updateData.campaign_id === '' || updateData.campaign_id === null) {
-    updateData.campaign_id = null;
-  }
-}
+        if (updateData.campaign_id === '' || updateData.campaign_id === null) {
+          updateData.campaign_id = null;
+        }
+      }
 
-console.log('🔧 Route: Cleaned updateData before sending to service:', updateData);
+      console.log('📧 Route: Cleaned updateData before sending to service:', updateData);
       
       const event = await eventService.updateEvent(eventId, req.club_id, updateData);
 
       if (!event) {
         return res.status(404).json({ error: 'Event not found or no changes made' });
       }
-const socketManager = getSocketManager(req);
-     socketManager.emitEventUpdated(req.club_id, event);
+
+      const socketManager = getSocketManager(req);
+      socketManager.emitEventUpdated(req.club_id, event);
 
       res.json({
         message: 'Event updated successfully',
@@ -289,8 +399,9 @@ router.delete('/api/events/:eventId',
       if (!deleted) {
         return res.status(404).json({ error: 'Event not found' });
       }
-const socketManager = getSocketManager(req);
-    socketManager.emitEventDeleted(req.club_id, eventId);
+
+      const socketManager = getSocketManager(req);
+      socketManager.emitEventDeleted(req.club_id, eventId);
 
       res.json({ message: 'Event deleted successfully' });
 

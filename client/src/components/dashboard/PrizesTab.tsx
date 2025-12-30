@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Gift, Search } from 'lucide-react';
 import PrizeCard from '../cards/PrizeCard';
-import CreatePrizeForm from './CreatePrizeForm';
+import CreatePrizeForm from '../prizes/CreatePrizeForm';
 import { Prize, CreatePrizeData, Event } from '../../types/types';
 import prizeService from '../../services/prizeServices';
 import { useAuth } from '../../store/app_store';

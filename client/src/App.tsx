@@ -21,7 +21,7 @@ import AppShell from "./components/layout/AppShell";
 
 import UserManagement from "./components/users/UserManagement";
 import PrizeManagement from "./components/prizes/PrizeManagement";
-import TaskManagement from "./components/users/TaskManagement";
+import TaskManagement from "./components/events/TaskManagement";
 
 
 import EntitySetupDashboard from './components/entity/Entitysetupdashboard';

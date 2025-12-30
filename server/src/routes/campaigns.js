@@ -3,11 +3,13 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { validateRequired } from '../middleware/validation.js';
 import CampaignService from '../services/CampaignService.js';
-import EventService from '../services/EventService.js'; // ✅ needed for /campaigns/:id/events
+import EventService from '../services/EventService.js';
+import ImpactService from '../services/ImpactService.js';
 
 const router = express.Router();
 const campaignService = new CampaignService();
 const eventService = new EventService();
+const impactService = new ImpactService(); // ✅ INTEGRATED
 
 const getSocketManager = (req) => req.app.get('socketManager');
 
@@ -45,7 +47,7 @@ function validateImpactAreas(impact_area_ids) {
   return { ok: true };
 }
 
-// Create a new campaign
+// Create a new campaign (as draft)
 router.post(
   '/api/campaigns',
   authenticateToken,
@@ -60,7 +62,7 @@ router.post(
         start_date,
         end_date,
         tags,
-        impact_area_ids, // ✅ NEW
+        impact_area_ids,
       } = req.body;
 
       // Validate target_amount is positive
@@ -108,9 +110,10 @@ router.post(
         tags: normalizedTags,
         impact_area_ids: Array.isArray(impact_area_ids)
           ? impact_area_ids.map((id) => id.trim()).filter(Boolean)
-          : [], // ✅ NEW
+          : [],
       };
 
+      // Campaign is created as draft (is_published = FALSE)
       const campaign = await campaignService.createCampaign(req.club_id, campaignData);
 
       const socketManager = getSocketManager(req);
@@ -119,12 +122,89 @@ router.post(
       }
 
       res.status(201).json({
-        message: 'Campaign created successfully',
+        message: 'Campaign created as draft successfully',
         campaign,
       });
     } catch (error) {
       console.error('Create campaign error:', error);
       res.status(500).json({ error: 'Failed to create campaign' });
+    }
+  }
+);
+
+// ✅ INTEGRATED: Publish a campaign (make it public) with trust checking
+router.patch('/api/campaigns/:campaignId/publish', 
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const clubId = req.club_id;
+
+      // ✅ Check trust status before publishing
+      const trustStatus = await impactService.checkTrustStatus(clubId);
+      
+      if (!trustStatus.canCreateCampaign) {
+        return res.status(403).json({ 
+          error: 'Cannot publish campaign',
+          reason: trustStatus.reason,
+          outstanding: trustStatus.outstandingImpactReports,
+          overdueDays: trustStatus.overdueDays,
+          message: 'Complete outstanding impact reports before publishing new campaigns'
+        });
+      }
+
+      // Publish the campaign
+      const campaign = await campaignService.publishCampaign(campaignId, clubId);
+
+      const socketManager = getSocketManager(req);
+      if (socketManager && typeof socketManager.emitCampaignUpdated === 'function') {
+        socketManager.emitCampaignUpdated(clubId, campaign);
+      }
+
+      res.json({
+        message: 'Campaign published successfully',
+        campaign
+      });
+
+    } catch (error) {
+      if (error.message === 'Campaign not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      
+      console.error('Publish campaign error:', error);
+      res.status(500).json({ error: 'Failed to publish campaign' });
+    }
+  }
+);
+
+// Unpublish a campaign (make it draft again)
+router.patch('/api/campaigns/:campaignId/unpublish', 
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const clubId = req.club_id;
+
+      // Unpublish the campaign
+      const campaign = await campaignService.unpublishCampaign(campaignId, clubId);
+
+      const socketManager = getSocketManager(req);
+      if (socketManager && typeof socketManager.emitCampaignUpdated === 'function') {
+        socketManager.emitCampaignUpdated(clubId, campaign);
+      }
+
+      res.json({
+        message: 'Campaign unpublished successfully',
+        campaign
+      });
+
+    } catch (error) {
+      if (error.message === 'Campaign not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      
+      console.error('Unpublish campaign error:', error);
+      res.status(500).json({ error: 'Failed to unpublish campaign' });
     }
   }
 );
@@ -170,6 +250,26 @@ router.get('/api/clubs/:clubId/campaigns', authenticateToken, async (req, res) =
     res.status(500).json({ error: 'Failed to fetch campaigns' });
   }
 });
+
+// Get published campaigns for a club (for public pages)
+router.get('/api/clubs/:clubId/campaigns/published',
+  async (req, res) => {
+    try {
+      const { clubId } = req.params;
+
+      const campaigns = await campaignService.getPublishedCampaignsByClub(clubId);
+
+      res.json({
+        campaigns,
+        total: campaigns.length
+      });
+
+    } catch (error) {
+      console.error('Get published campaigns error:', error);
+      res.status(500).json({ error: 'Failed to fetch published campaigns' });
+    }
+  }
+);
 
 // Get a specific campaign with stats
 router.get('/api/campaigns/:campaignId', authenticateToken, async (req, res) => {

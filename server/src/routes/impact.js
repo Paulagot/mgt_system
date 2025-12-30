@@ -2,7 +2,7 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { validateRequired } from '../middleware/validation.js';
-import ImpactService from '../services/ImpactServices.js';
+import ImpactService from '../services/ImpactService.js';
 
 const router = express.Router();
 const impactService = new ImpactService();
