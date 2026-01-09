@@ -1,4 +1,4 @@
-// server/src/services/PrizeService.js (FIXED - removed socket code)
+// server/src/services/PrizeService.js
 import config from '../config/environment.js';
 import database from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';

@@ -302,12 +302,21 @@ const ClubImpactDashboard: React.FC<ClubImpactDashboardProps> = ({ clubId, userR
   };
 
   // Calculate summary stats based on filtered impacts
-  const stats = {
-    totalReports: filteredImpacts.length,
-    totalSpent: filteredImpacts.reduce((sum, i) => sum + (i.amount_spent || 0), 0),
-    withMedia: filteredImpacts.filter((i) => i.proof.media.length > 0).length,
-    finalReports: impacts.filter(i => i.is_final).length,
-  };
+const toNumber = (v: unknown): number => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+};
+
+const stats = {
+  totalReports: filteredImpacts.length,
+  totalSpent: filteredImpacts.reduce((sum, i) => sum + toNumber(i.amount_spent), 0),
+  withMedia: filteredImpacts.filter((i) => (i.proof?.media?.length ?? 0) > 0).length,
+  finalReports: impacts.filter(i => i.is_final).length,
+};
 
   if (loading) {
     return (
